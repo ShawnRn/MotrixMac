@@ -1,0 +1,117 @@
+body {
+  width: 400px;
+  margin: 0;
+  padding: 12px;
+  background: linear-gradient(135deg, #007AFF 0%, #0051D5 100%);
+  transition: all 0.3s ease;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
+  overflow: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Container for centering */
+#react-root {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  width: 100% !important;
+}
+
+.MuiGrid-container {
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.text {
+  word-wrap: break-word;
+  word-break: break-all;
+  font-size: 13px;
+  color: #333;
+  font-weight: 500;
+}
+
+/* Modern card styling with glassmorphism */
+.MuiPaper-root {
+  background: rgba(255, 255, 255, 0.98) !important;
+  backdrop-filter: blur(10px) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.1) !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  overflow: hidden;
+  margin-bottom: 8px !important;
+}
+
+/* Main action buttons (top row) */
+.MuiGrid-item>.MuiIconButton-root {
+  transition: all 0.2s ease !important;
+  border-radius: 10px !important;
+  background: rgba(255, 255, 255, 0.9) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+  margin: 4px !important;
+  width: 44px !important;
+  height: 44px !important;
+}
+
+.MuiGrid-item>.MuiIconButton-root:hover {
+  transform: scale(1.05);
+  background: rgba(255, 255, 255, 1) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+}
+
+/* Icon button styling inside list items (removes the "boxed" artifact) */
+.MuiPaper-root .MuiIconButton-root {
+  background: transparent !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+  border-radius: 50% !important;
+}
+
+.MuiPaper-root .MuiIconButton-root:hover {
+  background: rgba(0, 0, 0, 0.04) !important;
+}
+
+/* Progress bar styling */
+.MuiLinearProgress-root {
+  border-radius: 8px !important;
+  height: 6px !important;
+  background: rgba(0, 0, 0, 0.08) !important;
+}
+
+.MuiLinearProgress-bar {
+  border-radius: 8px !important;
+  background: linear-gradient(90deg, #007AFF 0%, #0051D5 100%) !important;
+}
+
+/* Icon styling in download items */
+.MuiPaper-root img {
+  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  object-fit: cover;
+}
+
+/* Status icon colors */
+.MuiSvgIcon-colorSuccess {
+  color: #10b981 !important;
+}
+
+.MuiSvgIcon-colorError {
+  color: #ef4444 !important;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+}

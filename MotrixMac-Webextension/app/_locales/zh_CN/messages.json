@@ -1,0 +1,190 @@
+{
+    "appName": {
+        "message": "MotrixMac 网页扩展",
+        "description": "应用程序名称"
+    },
+    "appShortName": {
+        "message": "MotrixMac 扩展",
+        "description": "应用程序缩略名称"
+    },
+    "appDescription": {
+        "message": "用于 MotrixMac 下载管理器的网页扩展",
+        "description": "应用程序描述"
+    },
+    "browserActionTitle": {
+        "message": "MotrixMac 网页扩展",
+        "description": "浏览器操作按钮标题"
+    },
+    "settingsHeader": {
+        "message": "MotrixMac 扩展设置",
+        "description": "设置页面标题"
+    },
+    "connectionTitle": {
+        "message": "连接",
+        "description": "连接设置标题"
+    },
+    "rpcKeyLabel": {
+        "message": "RPC 密钥",
+        "description": "RPC 密钥标签"
+    },
+    "rpcKeyDesc": {
+        "message": "可在 Motrix 设置 > 进阶设置 > RPC 授权密钥 中找到",
+        "description": "RPC 密钥描述"
+    },
+    "rpcKeyPlaceholder": {
+        "message": "输入 RPC 密钥",
+        "description": "RPC 密钥输入框占位符"
+    },
+    "rpcPortLabel": {
+        "message": "RPC 端口",
+        "description": "RPC 端口标签"
+    },
+    "rpcPortDesc": {
+        "message": "默认值为 16800",
+        "description": "RPC 端口描述"
+    },
+    "behaviorTitle": {
+        "message": "行为",
+        "description": "行为设置标题"
+    },
+    "enableExtensionLabel": {
+        "message": "启用扩展",
+        "description": "启用扩展标签"
+    },
+    "enableExtensionDesc": {
+        "message": "自动拦截下载任务",
+        "description": "启用扩展描述"
+    },
+    "showContextLabel": {
+        "message": "显示右键菜单",
+        "description": "显示右键菜单标签"
+    },
+    "showContextDesc": {
+        "message": "显示“使用 Motrix 下载”选项",
+        "description": "显示右键菜单描述"
+    },
+    "showNotificationsLabel": {
+        "message": "显示通知",
+        "description": "显示通知标签"
+    },
+    "showNotificationsDesc": {
+        "message": "下载开始或出错时显示系统通知",
+        "description": "显示通知描述"
+    },
+    "appearanceTitle": {
+        "message": "外观",
+        "description": "外观设置标题"
+    },
+    "darkModeLabel": {
+        "message": "深色模式",
+        "description": "深色模式标签"
+    },
+    "darkModeDesc": {
+        "message": "切换界面外观主题",
+        "description": "深色模式描述"
+    },
+    "followSystem": {
+        "message": "跟随系统",
+        "description": "跟随系统选项"
+    },
+    "lightMode": {
+        "message": "浅色模式",
+        "description": "浅色模式选项"
+    },
+    "darkMode": {
+        "message": "深色模式",
+        "description": "深色模式选项"
+    },
+    "advancedTitle": {
+        "message": "高级",
+        "description": "高级设置标题"
+    },
+    "minFileSizeLabel": {
+        "message": "最小文件大小 (MB)",
+        "description": "最小文件大小标签"
+    },
+    "minFileSizeDesc": {
+        "message": "仅拦截大于此大小的文件",
+        "description": "最小文件大小描述"
+    },
+    "hideShelfLabel": {
+        "message": "隐藏下载栏",
+        "description": "隐藏下载栏标签"
+    },
+    "hideShelfDesc": {
+        "message": "隐藏浏览器的底部下载栏",
+        "description": "隐藏下载栏描述"
+    },
+    "blacklistTitle": {
+        "message": "黑名单",
+        "description": "黑名单设置标题"
+    },
+    "blacklistPlaceholder": {
+        "message": "输入域名或文件后缀（如 .jpg），每行一个",
+        "description": "黑名单占位符"
+    },
+    "save": {
+        "message": "保存",
+        "description": "保存按钮文本"
+    },
+    "saveBlacklistBtn": {
+        "message": "保存黑名单",
+        "description": "保存黑名单按钮文本"
+    },
+    "saved": {
+        "message": "已保存！",
+        "description": "保存反馈"
+    },
+    "blacklistSaved": {
+        "message": "黑名单已保存",
+        "description": "黑名单保存反馈"
+    },
+    "settingsSaved": {
+        "message": "设置已保存",
+        "description": "设置保存反馈"
+    },
+    "downloadWithMotrix": {
+        "message": "使用 MotrixMac 下载",
+        "description": "右键菜单文本"
+    },
+    "statusActive": {
+        "message": "运行中",
+        "description": "Popup status active"
+    },
+    "statusInactive": {
+        "message": "已停止",
+        "description": "Popup status inactive"
+    },
+    "btnOn": {
+        "message": "开启",
+        "description": "Button text On"
+    },
+    "btnOff": {
+        "message": "关闭",
+        "description": "Button text Off"
+    },
+    "btnMotrix": {
+        "message": "Motrix",
+        "description": "Button text Motrix"
+    },
+    "btnDownloads": {
+        "message": "打开文件夹",
+        "description": "Button text Downloads"
+    },
+    "btnClear": {
+        "message": "清除",
+        "description": "Button text Clear"
+    },
+    "recentDownloads": {
+        "message": "最近下载",
+        "description": "Recent downloads section title"
+    },
+    "noRecentDownloads": {
+        "message": "暂无最近下载",
+        "description": "Empty state text"
+    },
+    "clearHistoryConfirm": {
+        "message": "确定清除所有下载历史吗？",
+        "description": "Confirmation dialog"
+    }
+}

@@ -1,0 +1,196 @@
+/* ========================================
+   MotrixMac Config Page - Adaptive Theme
+   ======================================== */
+
+/* CSS Variables for Light/Dark Mode */
+:root {
+    /* Light mode colors (default) */
+    --bg-gradient-start: #007AFF;
+    --bg-gradient-end: #0051D5;
+    --text-primary: #1a1a1a;
+    --text-secondary: #4a4a4a;
+    --text-on-bg: rgba(0, 0, 0, 0.9);
+    --input-bg: rgba(255, 255, 255, 0.98);
+    --input-text: #000000;
+    --button-bg: rgba(255, 255, 255, 0.95);
+    --button-text: #007AFF;
+    --shadow-color: rgba(0, 0, 0, 0.1);
+    --border-color: rgba(0, 0, 0, 0.1);
+    --helper-text: rgba(0, 0, 0, 0.7);
+}
+
+/* Dark mode colors */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg-gradient-start: #0A84FF;
+        --bg-gradient-end: #0066CC;
+        --text-primary: #ffffff;
+        --text-secondary: #e0e0e0;
+        --text-on-bg: rgba(255, 255, 255, 0.95);
+        --input-bg: rgba(255, 255, 255, 0.98);
+        --input-text: #000000;
+        --button-bg: rgba(255, 255, 255, 0.95);
+        --button-text: #0A84FF;
+        --shadow-color: rgba(0, 0, 0, 0.3);
+        --border-color: rgba(255, 255, 255, 0.1);
+        --helper-text: rgba(255, 255, 255, 0.85);
+    }
+}
+
+/* Base Styles */
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+    background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
+    color: var(--text-on-bg);
+}
+
+.MuiContainer-root {
+    background: transparent !important;
+}
+
+/* Input Fields */
+.MuiTextField-root {
+    margin-bottom: 8px;
+}
+
+.MuiOutlinedInput-root {
+    background: var(--input-bg) !important;
+    border-radius: 10px !important;
+    transition: all 0.3s ease !important;
+}
+
+.MuiOutlinedInput-root:hover {
+    background: var(--input-bg) !important;
+    box-shadow: 0 4px 12px var(--shadow-color) !important;
+}
+
+.MuiOutlinedInput-root.Mui-focused {
+    background: var(--input-bg) !important;
+    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.2) !important;
+}
+
+.MuiOutlinedInput-notchedOutline {
+    border-color: var(--border-color) !important;
+}
+
+.MuiOutlinedInput-input {
+    color: var(--input-text) !important;
+    font-weight: 500 !important;
+}
+
+/* Input Labels */
+.MuiInputLabel-root {
+    color: rgba(0, 0, 0, 0.6) !important;
+    font-weight: 500 !important;
+}
+
+.MuiInputLabel-root.Mui-focused {
+    color: var(--button-text) !important;
+    font-weight: 600 !important;
+}
+
+/* Buttons */
+.MuiButton-root {
+    border-radius: 10px !important;
+    text-transform: none !important;
+    font-weight: 600 !important;
+    background: var(--button-bg) !important;
+    color: var(--button-text) !important;
+    border: 1px solid var(--border-color) !important;
+    transition: all 0.2s ease !important;
+    box-shadow: 0 2px 8px var(--shadow-color) !important;
+}
+
+.MuiButton-root:hover {
+    background: var(--button-bg) !important;
+    box-shadow: 0 6px 16px var(--shadow-color) !important;
+    transform: translateY(-1px);
+    border-color: var(--button-text) !important;
+}
+
+.MuiButton-root:active {
+    transform: translateY(0);
+}
+
+/* Form Labels (Toggle Labels) */
+.MuiFormLabel-root {
+    color: var(--text-on-bg) !important;
+    font-weight: 600 !important;
+    font-size: 15px !important;
+    line-height: 1.5 !important;
+}
+
+/* Helper Text */
+.MuiFormHelperText-root {
+    color: var(--helper-text) !important;
+    font-size: 12px !important;
+    margin-top: 4px !important;
+    font-weight: 500 !important;
+}
+
+/* Switch Styling */
+.MuiSwitch-root {
+    width: 52px !important;
+    height: 32px !important;
+    padding: 0 !important;
+}
+
+.MuiSwitch-switchBase {
+    padding: 4px !important;
+}
+
+.MuiSwitch-thumb {
+    width: 24px !important;
+    height: 24px !important;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2) !important;
+}
+
+.MuiSwitch-track {
+    border-radius: 16px !important;
+    background-color: rgba(120, 120, 128, 0.32) !important;
+    opacity: 1 !important;
+}
+
+.MuiSwitch-switchBase.Mui-checked {
+    color: white !important;
+}
+
+.MuiSwitch-switchBase.Mui-checked+.MuiSwitch-track {
+    background-color: #34C759 !important;
+    opacity: 1 !important;
+}
+
+/* Grid Layout */
+.MuiGrid-container {
+    padding: 24px !important;
+}
+
+.MuiGrid-item {
+    display: flex !important;
+    align-items: center !important;
+}
+
+/* Multiline TextField (Blacklist) */
+.MuiTextField-root textarea {
+    color: var(--input-text) !important;
+    font-family: 'SF Mono', 'Monaco', 'Menlo', monospace !important;
+    font-size: 13px !important;
+}
+
+/* Remove any text shadows that might interfere */
+* {
+    text-shadow: none !important;
+}
+
+/* Ensure proper contrast */
+.MuiFormLabel-root,
+.MuiFormHelperText-root {
+    text-shadow: none !important;
+}

@@ -1,0 +1,202 @@
+{
+  "appName": {
+    "message": "MotrixMac Extension",
+    "description": "The name of the application"
+  },
+  "appShortName": {
+    "message": "MotrixMac Ext",
+    "description": "The short_name (maximum of 12 characters recommended) is a short version of the app's name."
+  },
+  "appDescription": {
+    "message": "WebExtension for MotrixMac download manager",
+    "description": "The description of the application"
+  },
+  "browserActionTitle": {
+    "message": "MotrixMac Extension",
+    "description": "The title of the browser action button"
+  },
+  "extensionStatus": {
+    "message": "Extension status:",
+    "description": "Extension status"
+  },
+  "enableNotifications": {
+    "message": "Enable notifications:",
+    "description": "Enable Notifications"
+  },
+  "setKey": {
+    "message": "Set Key",
+    "description": "Set Key"
+  },
+  "setMinSize": {
+    "message": "Set minimum file size (mb)",
+    "description": "Set minimum file size"
+  },
+  "setSize": {
+    "message": "Set size",
+    "description": "Set size"
+  },
+  "keyInputPlaceholder": {
+    "message": "Motrix API Key",
+    "description": "Motrix API Key"
+  },
+  "blacklist": {
+    "message": "Blacklist",
+    "description": "Blacklist"
+  },
+  "saveBlacklist": {
+    "message": "Save blacklist",
+    "description": "Save blacklist"
+  },
+  "darkMode": {
+    "message": "Dark mode",
+    "description": "Dark mode"
+  },
+  "showOnlyAria": {
+    "message": "Show only Motrix downloads in the popup",
+    "description": "Show only Motrix downloads in the popup"
+  },
+  "hideChromeBar": {
+    "message": "Hide browser download bar",
+    "description": "Hide browser download bar"
+  },
+  "showContextOption": {
+    "message": "Show \"Download with Motrix\" context option",
+    "description": "Show \"Download with Motrix\" context option"
+  },
+  "downloadWithMotrix": {
+    "message": "Download with MotrixMac",
+    "description": "Download with Motrix"
+  },
+  "setPort": {
+    "message": "Set Port",
+    "description": "Set Port"
+  },
+  "downloadFallback": {
+    "message": "If launching in Motrix fails, use the browser's default download manager",
+    "description": "If launching in Motrix fails, use the browser's default download manager"
+  },
+  "settingsHeader": {
+    "message": "MotrixMac Extension",
+    "description": "Settings page header"
+  },
+  "connectionTitle": {
+    "message": "Connection",
+    "description": "Connection settings title"
+  },
+  "rpcKeyLabel": {
+    "message": "RPC Key",
+    "description": "Label for RPC Key"
+  },
+  "rpcKeyDesc": {
+    "message": "Secret key found in Motrix Settings > Advanced",
+    "description": "Description for RPC Key"
+  },
+  "rpcKeyPlaceholder": {
+    "message": "Enter RPC Secret",
+    "description": "Placeholder for RPC Key input"
+  },
+  "rpcPortLabel": {
+    "message": "RPC Port",
+    "description": "Label for RPC Port"
+  },
+  "rpcPortDesc": {
+    "message": "Default is 16800",
+    "description": "Description for RPC Port"
+  },
+  "behaviorTitle": {
+    "message": "Behavior",
+    "description": "Behavior settings title"
+  },
+  "enableExtensionLabel": {
+    "message": "Enable Extension",
+    "description": "Label for Enable Extension"
+  },
+  "enableExtensionDesc": {
+    "message": "Intercept downloads automatically",
+    "description": "Description for Enable Extension"
+  },
+  "showContextLabel": {
+    "message": "Show Context Menu",
+    "description": "Label for Show Context Menu"
+  },
+  "showContextDesc": {
+    "message": "'Download with Motrix' on right click",
+    "description": "Description for Show Context Menu"
+  },
+  "showNotificationsLabel": {
+    "message": "Show Notifications",
+    "description": "Label for Show Notifications"
+  },
+  "showNotificationsDesc": {
+    "message": "System notifications on start/error",
+    "description": "Description for Show Notifications"
+  },
+  "appearanceTitle": {
+    "message": "Appearance",
+    "description": "Appearance settings title"
+  },
+  "darkModeLabel": {
+    "message": "Dark Mode",
+    "description": "Label for Dark Mode"
+  },
+  "darkModeDesc": {
+    "message": "Override system appearance",
+    "description": "Description for Dark Mode"
+  },
+  "followSystem": {
+    "message": "Follow System",
+    "description": "Option for system theme"
+  },
+  "lightMode": {
+    "message": "Light Mode",
+    "description": "Option for light mode"
+  },
+  "advancedTitle": {
+    "message": "Advanced",
+    "description": "Advanced settings title"
+  },
+  "minFileSizeLabel": {
+    "message": "Minimum File Size (MB)",
+    "description": "Label for Minimum File Size"
+  },
+  "minFileSizeDesc": {
+    "message": "Intercept only files larger than this size",
+    "description": "Description for Minimum File Size"
+  },
+  "hideShelfLabel": {
+    "message": "Hide Browser Shelf",
+    "description": "Label for Hide Browser Shelf"
+  },
+  "hideShelfDesc": {
+    "message": "Hide the bottom download bar",
+    "description": "Description for Hide Browser Shelf"
+  },
+  "blacklistTitle": {
+    "message": "Blacklist",
+    "description": "Blacklist settings title"
+  },
+  "blacklistPlaceholder": {
+    "message": "Enter domains or file extensions (e.g. .jpg) separated by new lines",
+    "description": "Placeholder for Blacklist"
+  },
+  "save": {
+    "message": "Save",
+    "description": "Save button text"
+  },
+  "saveBlacklistBtn": {
+    "message": "Save Blacklist",
+    "description": "Save Blacklist button text"
+  },
+  "saved": {
+    "message": "Saved!",
+    "description": "Saved feedback text"
+  },
+  "blacklistSaved": {
+    "message": "Blacklist saved",
+    "description": "Blacklist saved feedback text"
+  },
+  "settingsSaved": {
+    "message": "Settings saved",
+    "description": "Settings saved feedback text"
+  }
+}

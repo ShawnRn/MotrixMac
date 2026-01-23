@@ -1,0 +1,90 @@
+{
+  "name": "__MSG_appName__",
+  "short_name": "__MSG_appShortName__",
+  "description": "__MSG_appDescription__",
+  "version": "2.0.1",
+  "__firefox__browser_specific_settings": {
+    "gecko": {
+      "id": "{9ce99d37-4a5e-409a-a04b-0f3f50491bc7}"
+    }
+  },
+  "manifest_version": 3,
+  "__firefox__manifest_version": 2,
+  "default_locale": "en",
+  "homepage_url": "https://github.com/gautamkrishnar/motrix-webextension",
+  "icons": {
+    "16": "images/16.png",
+    "32": "images/32.png",
+    "48": "images/48.png",
+    "128": "images/128.png"
+  },
+  "background": {
+    "service_worker": "scripts/background.js"
+  },
+  "__firefox__background": {
+    "scripts": [
+      "scripts/background.js"
+    ],
+    "persistent": true
+  },
+  "options_ui": {
+    "page": "pages/config.html",
+    "open_in_tab": true
+  },
+  "__chrome__content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
+  "__firefox__content_security_policy": "script-src 'self' https://unpkg.com; object-src 'self'",
+  "__chrome__action": {
+    "default_icon": {
+      "16": "images/16.png",
+      "32": "images/32.png",
+      "48": "images/48.png",
+      "128": "images/128.png"
+    },
+    "default_title": "__MSG_browserActionTitle__",
+    "default_popup": "pages/popup.html"
+  },
+  "__firefox__browser_action": {
+    "browser_style": true,
+    "default_icon": {
+      "16": "images/16.png",
+      "32": "images/32.png",
+      "48": "images/48.png",
+      "128": "images/128.png"
+    },
+    "default_title": "__MSG_browserActionTitle__",
+    "default_popup": "pages/popup.html"
+  },
+  "__chrome__web_accessible_resources": [
+    {
+      "resources": [
+        "images/*",
+        "scripts/*",
+        "styles/*"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ],
+  "permissions": [
+    "downloads",
+    "downloads.shelf",
+    "notifications",
+    "storage",
+    "contextMenus",
+    "cookies",
+    "alarms"
+  ],
+  "__firefox__permissions": [
+    "downloads",
+    "notifications",
+    "storage",
+    "contextMenus",
+    "cookies"
+  ],
+  "__chrome__host_permissions": [
+    "<all_urls>"
+  ]
+}
