@@ -1,6 +1,7 @@
 # MotrixMac
 
 > This is a vibe-coded project.
+> 使用 **Antigravity** 倾情开发。
 
 <p align="center">
   <img src="./pics/icon.png" width="128" alt="MotrixMac 图标" />
@@ -59,6 +60,7 @@ npm run build -- chrome
 - 灵感来源于 [Motrix](https://github.com/agalwood/Motrix).
 - 核心下载引擎 [aria2](https://aria2.github.io/).
 - 浏览器插件基于 [motrix-webextension](https://github.com/gautamkrishnar/motrix-webextension).
+- 使用 [Antigravity](https://github.com/google-deepmind/antigravity) 开发 —— 谷歌 DeepMind 推出的强大 AI 编程助手。
 
 ## 📜 开源协议
 
