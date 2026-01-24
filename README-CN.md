@@ -3,7 +3,7 @@
 > This is a vibe-coded project.
 
 <p align="center">
-  <img src="./AppIconSet/AppIcon.iconset/icon_512x512.png" width="128" alt="MotrixMac 图标" />
+  <img src="./pics/icon.png" width="128" alt="MotrixMac 图标" />
 </p>
 
 ## 一个轻量化的、全原生 Swift 实现的 macOS 下载工具。
@@ -31,7 +31,7 @@ MotrixMac 是一款使用 SwiftUI 构建的 macOS 原生下载管理器，旨在
 
 ## 🖥 应用截图
 
-![主界面](./MotrixMac/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1.png)
+![主界面](./pics/screenshot.png)
 
 ## ⌨️ 开发指南
 

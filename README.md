@@ -3,7 +3,7 @@
 > This is a vibe-coded project.
 
 <p align="center">
-  <img src="./AppIconSet/AppIcon.iconset/icon_512x512.png" width="128" alt="MotrixMac Icon" />
+  <img src="./pics/icon.png" width="128" alt="MotrixMac Icon" />
 </p>
 
 ## A lightweight, native Swift-powered download manager for macOS.
@@ -31,7 +31,7 @@ MotrixMac is a native macOS download manager built with SwiftUI, designed for sp
 
 ## 🖥 Screenshots
 
-![Main View](./MotrixMac/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1.png)
+![Main View](./pics/screenshot.png)
 
 ## ⌨️ Development
 
