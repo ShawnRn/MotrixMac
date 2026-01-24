@@ -32,7 +32,11 @@ MotrixMac 是一款使用 SwiftUI 构建的 macOS 原生下载管理器，旨在
 
 ## 🖥 应用截图
 
-![主界面](./pics/screenshot.png)
+````carousel
+![任务列表](./pics/screenshot-1.png)
+<!-- slide -->
+![详细信息](./pics/screenshot-2.png)
+````
 
 ## ⌨️ 开发指南
 
@@ -60,7 +64,7 @@ npm run build -- chrome
 - 灵感来源于 [Motrix](https://github.com/agalwood/Motrix).
 - 核心下载引擎 [aria2](https://aria2.github.io/).
 - 浏览器插件基于 [motrix-webextension](https://github.com/gautamkrishnar/motrix-webextension).
-- 使用 [Antigravity](https://github.com/google-deepmind/antigravity) 开发 —— 谷歌 DeepMind 推出的强大 AI 编程助手。
+- 使用 [Antigravity](https://antigravity.google/) 开发 —— 谷歌 DeepMind 推出的强大 AI 编程助手。
 
 ## 📜 开源协议
 

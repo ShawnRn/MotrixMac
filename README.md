@@ -32,7 +32,11 @@ MotrixMac is a native macOS download manager built with SwiftUI, designed for sp
 
 ## 🖥 Screenshots
 
-![Main View](./pics/screenshot.png)
+````carousel
+![Task List](./pics/screenshot-1.png)
+<!-- slide -->
+![Task Details](./pics/screenshot-2.png)
+````
 
 ## ⌨️ Development
 
@@ -60,7 +64,7 @@ npm run build -- chrome
 - Inspired by [Motrix](https://github.com/agalwood/Motrix).
 - Powered by [aria2](https://aria2.github.io/).
 - WebExtension based on [motrix-webextension](https://github.com/gautamkrishnar/motrix-webextension).
-- Developed using [Antigravity](https://github.com/google-deepmind/antigravity), the powerful AI coding assistant by Google DeepMind.
+- Developed using [Antigravity](https://antigravity.google/), the powerful AI coding assistant by Google DeepMind.
 
 ## 📜 License
 
