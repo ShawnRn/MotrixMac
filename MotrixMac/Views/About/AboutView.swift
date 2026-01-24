@@ -20,9 +20,22 @@ struct AboutView: View {
             license: "GPL-3.0",
             description: "Browser extension for capturing downloads.\nhttps://github.com/gautamkrishnar/motrix-webextension",
             type: "Tooling"
+        ),
+        LicenseItem(
+            name: "Antigravity",
+            license: "AI Native",
+            description: "Developed with ❤️ using Antigravity, the powerful AI coding assistant by Google DeepMind.\nhttps://antigravity.google/",
+            type: "Credits"
         )
     ]
     @State private var changelogs: [ChangelogItem] = [
+        ChangelogItem(
+            version: "1.0.3",
+            date: "2026-01-24",
+            changes: [
+                "首个 Release 版本。"
+            ]
+        ),
         ChangelogItem(
             version: "1.0.2",
             date: "2026-01-23",
@@ -91,7 +104,7 @@ struct AboutView: View {
                             .frame(width: 600, height: 500)
                     }
                     
-                    Link(destination: URL(string: "https://github.com/agalwood/Motrix")!) {
+                    Link(destination: URL(string: "https://github.com/ShawnRn/MotrixMac")!) {
                         VStack(spacing: 6) {
                             Image(systemName: "globe")
                                 .resizable()
