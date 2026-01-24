@@ -1,5 +1,7 @@
 # MotrixMac
 
+> This is a vibe-coded project.
+
 <p align="center">
   <img src="./AppIconSet/AppIcon.iconset/icon_512x512.png" width="128" alt="MotrixMac Icon" />
 </p>
@@ -7,6 +9,12 @@
 ## A lightweight, native Swift-powered download manager for macOS.
 
 English | [简体中文](./README-CN.md)
+
+## Why MotrixMac?
+
+The original [Motrix](https://github.com/agalwood/Motrix) project has served many users well, but it hasn't seen frequent updates for quite some time. MotrixMac was born out of a desire to rejuvenate that experience by rebuilding it from the ground up using **Swift** and **SwiftUI**. 
+
+Our goal is to provide a truly native, lightweight, and high-performance download manager specifically optimized for the modern macOS ecosystem.
 
 MotrixMac is a native macOS download manager built with SwiftUI, designed for speed, efficiency, and a premium user experience. It captures the essence of the original Motrix while delivering a truly native feel.
 

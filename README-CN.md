@@ -1,5 +1,7 @@
 # MotrixMac
 
+> This is a vibe-coded project.
+
 <p align="center">
   <img src="./AppIconSet/AppIcon.iconset/icon_512x512.png" width="128" alt="MotrixMac 图标" />
 </p>
@@ -7,6 +9,12 @@
 ## 一个轻量化的、全原生 Swift 实现的 macOS 下载工具。
 
 [English](./README.md) | 简体中文
+
+## 为什么要开发 MotrixMac？
+
+原版的 [Motrix](https://github.com/agalwood/Motrix) 已经很长时间没有更新了，但我非常喜欢它的简洁设计。为了在 macOS 上获得更好的使用体验，我决定使用 **Swift** 和 **SwiftUI** 从零开始重写一个全原生的版本。
+
+MotrixMac 旨在为现代 macOS 生态系统提供一个极速、轻量且具备原生质感的下载工具，让下载体验更系统，更纯粹。
 
 MotrixMac 是一款使用 SwiftUI 构建的 macOS 原生下载管理器，旨在提供极速、高效且卓越的用户体验。它在保留原版 Motrix 精髓的同时，带来了真正的原生系统触感。
 
