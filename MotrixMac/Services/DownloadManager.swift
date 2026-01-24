@@ -13,6 +13,7 @@ final class DownloadManager {
     var isConnected = false
     var connectionError: String?
     var lastRpcError: String? = nil
+    var needsRepair = false // Signals persistent engine issues
 
     // UI state
     var showAddTaskSheet = false
@@ -42,6 +43,10 @@ final class DownloadManager {
         activeDownloads.reduce(0) { $0 + $1.uploadSpeed }
     }
 
+    var aria2Process: EngineProcess? {
+        (NSApplication.shared.delegate as? AppDelegate)?.aria2Process
+    }
+    
     // Private
     private var aria2Service: Aria2Service?
     private var refreshTask: Task<Void, Never>?
@@ -89,22 +94,28 @@ final class DownloadManager {
         await disconnect()
 
         // Retry logic for connection (Wait for aria2 to start)
-        for i in 0..<10 {
+        for i in 0..<8 { // Reduced from 10 attempts
             // Read from UserDefaults - STRICTLY follow configured port
             // We removed dynamic port switching to ensure Browser Extension compatibility
             var port = UserDefaults.standard.integer(forKey: "rpcPort")
             if port == 0 {
-                port = 16800
+                port = 12800
             }
             
             // ALWAYS reload secret fresh from disk in case EngineProcess updated it
             let secret = UserDefaults.standard.string(forKey: "rpcSecret") ?? ""
             
-            let maskedSecret = secret.count >= 8 ? 
-                "\(secret.prefix(2))...\(secret.suffix(2))" : 
-                (secret.isEmpty ? "empty" : "too short")
-            
-            print("DownloadManager: Attempt \(i + 1)/10 - Port: \(port), Secret: \(maskedSecret)")
+            print("DownloadManager: Attempt \(i + 1)/8 - Port: \(port), State: \(aria2Process?.state.rawValue ?? "unknown")")
+
+            // FAST-FAIL: If engine reports failed, don't bother retrying RPC
+            if let engine = aria2Process, engine.state == .failed {
+                await MainActor.run {
+                    self.connectionError = engine.lastErrorMessage ?? "引擎启动失败"
+                    self.isConnected = false
+                    self.needsRepair = true
+                }
+                return
+            }
 
             // Create new service
             let newService = Aria2Service(
@@ -115,6 +126,7 @@ final class DownloadManager {
             self.aria2Service = newService
 
             do {
+                // Reduced timeout for initial connection verification
                 try await newService.connect()
                 
                 // CRITICAL: Verify the secret works before declaring victory
@@ -124,6 +136,7 @@ final class DownloadManager {
                     self.isConnected = true
                     self.connectionError = nil
                     self.lastRpcError = nil
+                    self.needsRepair = false
                 }
                 
                 await newService.setOnNotification { [weak self] method, params in
@@ -132,32 +145,50 @@ final class DownloadManager {
                     }
                 }
                 startAutoRefresh()
-                print("DownloadManager: Successfully connected and authenticated on attempt \(i + 1)")
+                Logger.info("DownloadManager: Successfully connected and authenticated on attempt \(i + 1)")
+                await MainActor.run {
+                    aria2Process?.state = .running
+                }
                 return
             } catch {
-                print("DownloadManager: Connection attempt \(i + 1) failed: \(error)")
-                
-                await MainActor.run {
-                    // Update error state immediately so UI reacts
-                    if let rpcError = error as? Aria2Error {
-                        if case .rpcError(let msg) = rpcError {
-                            self.lastRpcError = msg
-                        }
-                    }
+                if i == 7 { // Last attempt
+                    Logger.error("DownloadManager: Connection attempt \(i + 1) failed: \(error)")
                     
-                    if i == 9 {
+                    // Logic to detect if it's a residual process (Connection Refused vs Auth Error)
+                    // Note: Aria2Error.rpcError("Request timeout") usually happens when port is open but unresponsive
+                    
+                    await MainActor.run {
                         self.connectionError = error.localizedDescription
                         self.isConnected = false
-                        print("DownloadManager: Failed to connect to aria2 after 10 attempts: \(error)")
+                        self.needsRepair = true // Mark for global alert
                     }
-                }
-
-                if i < 9 {
-                    // Wait before retrying - Increase to 1.0s to give engine more boot time
-                    try? await Task.sleep(for: .milliseconds(1000))
+                    await MainActor.run {
+                        aria2Process?.state = .failed
+                    }
+                } else {
+                    // Wait before retrying - FAST RETRY
+                    try? await Task.sleep(for: .milliseconds(300))
                 }
             }
         }
+    }
+    
+    /// Definitive engine reset and repair
+    func forceRepair() async {
+        print("DownloadManager: Starting definitive force repair...")
+        await MainActor.run {
+            self.needsRepair = false
+            self.connectionError = "正在执行引擎自愈程序..."
+        }
+        
+        // Re-initiate engine process with full self-healing
+        if let engine = aria2Process {
+            engine.start() // start() now includes zombieScan + aggressiveCleanup
+        }
+        
+        // Give the engine time to heal and start
+        try? await Task.sleep(for: .milliseconds(1500))
+        await connect()
     }
 
     func disconnect() async {
@@ -173,7 +204,12 @@ final class DownloadManager {
     // MARK: - Task Management
 
     func refreshTasks() async {
-        guard let service = aria2Service else { return }
+        guard let service = aria2Service, isConnected && !needsRepair else { return }
+        
+        // PAUSE refresh if engine is busy healing
+        if let engine = aria2Process, engine.state != .running {
+            return
+        }
 
         do {
             let active = try await service.tellActive()
@@ -235,6 +271,84 @@ final class DownloadManager {
         }
     }
     
+    /// Sync user preferences to aria2 live via RPC
+    func applyGlobalOptions() async {
+        guard let service = aria2Service, isConnected else { return }
+        
+        let defaults = UserDefaults.standard
+        let maxConcurrent = defaults.integer(forKey: "maxConcurrentDownloads")
+        let defaultConnections = defaults.integer(forKey: "defaultConnections")
+        let userAgent = defaults.string(forKey: "userAgent") ?? "MotrixMac/2.0"
+        
+        var options: [String: String] = [:]
+        
+        if maxConcurrent > 0 {
+            options["max-concurrent-downloads"] = String(maxConcurrent)
+        }
+        
+        if defaultConnections > 0 {
+            // Note: 'split' cannot be changed globally at runtime via RPC.
+            // It requires an engine restart to take effect from aria2.conf.
+            // We only send 'max-connection-per-server' here as a best-effort,
+            // but the true fix relies on restartEngine() being called when this setting changes.
+            options["max-connection-per-server"] = String(defaultConnections)
+        }
+        
+        options["user-agent"] = userAgent
+        
+        guard !options.isEmpty else { return }
+        
+        do {
+            try await service.changeGlobalOption(options: options)
+            Logger.info("DownloadManager: Successfully applied global options: \(options)")
+            
+            // Dynamic Update: Apply thread/split options to existing tasks
+            // 'split' and 'max-connection-per-server' needs to be set per-task for existing ones
+            if let connections = options["max-connection-per-server"] {
+                for task in tasks {
+                    // Only apply if task is active, waiting or paused
+                    guard ["active", "waiting", "paused"].contains(task.status) else { continue }
+                    
+                    let taskOptions = [
+                        "max-connection-per-server": connections,
+                        "split": connections
+                    ]
+                    
+                    // Ideally we should pause -> changeOption -> unpause for active tasks for 'split' to take full effect immediately?
+                    // Aria2 docs say split can be changed via changeOption.
+                    // Doing a quick pause/resume cycle is safest to force re-connection logic.
+                    
+                    if task.status == "active" {
+                        try? await service.pause(gid: task.id)
+                        try? await service.changeOption(gid: task.id, options: taskOptions)
+                        try? await service.unpause(gid: task.id)
+                        print("DownloadManager: Updated active task \(task.id) with connections: \(connections)")
+                    } else {
+                        try? await service.changeOption(gid: task.id, options: taskOptions)
+                        print("DownloadManager: Updated \(task.status) task \(task.id) with connections: \(connections)")
+                    }
+                }
+            }
+        } catch {
+            print("DownloadManager: Failed to apply global options: \(error)")
+        }
+    }
+
+    /// Restart the aria2 engine to apply settings that require a restart (e.g. split)
+    func restartEngine() async {
+        guard let engine = aria2Process else { return }
+        
+        Logger.info("DownloadManager: Requesting engine restart...")
+        await disconnect()
+        
+        // Restart the process (which re-generates aria2.conf with new defaults)
+        engine.restart()
+        
+        // Wait for it to come back up
+        try? await Task.sleep(for: .milliseconds(1500))
+        await connect()
+    }
+    
     func taskCount(for category: TaskCategory) -> Int {
         tasks.filter { category.aria2Status.contains($0.status) }.count
     }
@@ -253,13 +367,35 @@ final class DownloadManager {
             return
         }
         
-        _ = try await service.addUri(uris: [uri], options: options)
+        var finalOptions = options
+        let defaultConnections = UserDefaults.standard.integer(forKey: "defaultConnections")
+        if defaultConnections > 0 {
+            if finalOptions["split"] == nil {
+                finalOptions["split"] = "\(defaultConnections)"
+            }
+            if finalOptions["max-connection-per-server"] == nil {
+                finalOptions["max-connection-per-server"] = "\(defaultConnections)"
+            }
+        }
+        
+        _ = try await service.addUri(uris: [uri], options: finalOptions)
         await refreshTasks()
     }
 
     func addTorrent(base64: String, options: [String: Any]) async throws {
         guard let service = aria2Service else { throw DownloadError.notConnected }
-        _ = try await service.addTorrent(torrent: base64, options: options)
+        var finalOptions = options
+        let defaultConnections = UserDefaults.standard.integer(forKey: "defaultConnections")
+        if defaultConnections > 0 {
+            if finalOptions["split"] == nil {
+                finalOptions["split"] = "\(defaultConnections)"
+            }
+            if finalOptions["max-connection-per-server"] == nil {
+                finalOptions["max-connection-per-server"] = "\(defaultConnections)"
+            }
+        }
+
+        _ = try await service.addTorrent(torrent: base64, options: finalOptions)
         await refreshTasks()
     }
 
@@ -307,7 +443,7 @@ final class DownloadManager {
             try await service.remove(gid: task.id)
             await refreshTasks()
         } catch {
-            print("Failed to cancel task: \(error)")
+            Logger.error("Failed to cancel task: \(error)")
         }
     }
 
@@ -398,7 +534,13 @@ final class DownloadManager {
     private func deleteFiles(for task: DownloadTask) {
         let path = task.dir + "/" + task.name
         let url = URL(fileURLWithPath: path)
-        try? FileManager.default.trashItem(at: url, resultingItemURL: nil)
+        
+        // 1. Delete the main data file or folder
+        try? FileManager.default.removeItem(at: url)
+        
+        // 2. Delete the .aria2 control file (usually named [filename].aria2)
+        let aria2Url = url.appendingPathExtension("aria2")
+        try? FileManager.default.removeItem(at: aria2Url)
     }
 
     // MARK: - Auto Refresh
@@ -411,9 +553,10 @@ final class DownloadManager {
             print("DownloadManager: Starting auto-refresh loop")
             while !Task.isCancelled {
                 // Check cancellation at start of loop
-                if Task.isCancelled { break }
-                
-                await refreshTasks()
+                // PAUSE loop if engine needs repair to avoid spamming timeouts
+                if !needsRepair {
+                    await refreshTasks()
+                }
 
                 // Adaptive polling:
                 // If there are active downloads/tasks, refresh faster (1s)
@@ -450,7 +593,18 @@ final class DownloadManager {
             await refreshTasks()
 
             // Handle specific events for notifications
-            if method == "aria2.onDownloadComplete" || method == "aria2.onBtDownloadComplete" {
+            if method == "aria2.onDownloadStart" {
+                if let firstParam = params.first as? [String: Any],
+                    let gid = firstParam["gid"] as? String
+                {
+                    // Immediate refresh so the new task appears instantly
+                    await refreshTasks()
+                    
+                    if let task = tasks.first(where: { $0.id == gid }) {
+                        sendNotification(title: "下载开始", body: "\(task.name) 已开始下载")
+                    }
+                }
+            } else if method == "aria2.onDownloadComplete" || method == "aria2.onBtDownloadComplete" {
                 if let firstParam = params.first as? [String: Any],
                     let gid = firstParam["gid"] as? String
                 {
@@ -467,7 +621,7 @@ final class DownloadManager {
                 {
                     if let task = try? await aria2Service?.tellStatus(gid: gid) {
                         let errorMessage = task.errorMessage ?? "未知错误"
-                        print("DownloadManager: Task \(task.name) (GID: \(gid)) failed: \(errorMessage)")
+                        Logger.error("DownloadManager: Task \(task.name) (GID: \(gid)) failed: \(errorMessage)")
                         sendNotification(title: "下载失败", body: "\(task.name) 下载失败: \(errorMessage)")
                     }
                 }

@@ -1,5 +1,7 @@
 body {
-  width: 400px;
+  min-width: 400px;
+  width: fit-content;
+  max-width: 600px;
   margin: 0;
   padding: 12px;
   background: linear-gradient(135deg, #007AFF 0%, #0051D5 100%);

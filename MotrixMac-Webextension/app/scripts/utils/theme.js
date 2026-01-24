@@ -3,15 +3,15 @@ import { css } from '@emotion/react';
 export const globalStyles = css`
   :root {
     --primary-color: #007AFF;
-    --primary-color-dim: rgba(0, 122, 255, 0.2);
-    --bg: #f5f5f7;
-    --card-bg: rgba(255, 255, 255, 0.8);
-    --text-primary: #1d1d1f;
-    --text-secondary: #86868b;
-    --border-color: #e5e5e5;
-    --border-color-light: #f0f0f0;
-    --shadow-color: rgba(0, 0, 0, 0.05);
-    --shadow-color-hover: rgba(0, 0, 0, 0.1);
+    --primary-color-dim: rgba(0, 122, 255, 0.15);
+    --bg: #f2f2f7;
+    --card-bg: rgba(255, 255, 255, 0.7);
+    --text-primary: #000000;
+    --text-secondary: #636366;
+    --border-color: rgba(0, 0, 0, 0.1);
+    --border-color-light: rgba(0, 0, 0, 0.05);
+    --shadow-color: rgba(0, 0, 0, 0.08);
+    --shadow-color-hover: rgba(0, 0, 0, 0.12);
     --input-bg: #ffffff;
     --success-color: #34C759;
     --error-color: #FF3B30;

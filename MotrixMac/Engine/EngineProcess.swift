@@ -1,27 +1,38 @@
 import AppKit
 import Foundation
+import Combine
 
-/// Manages the aria2 engine subprocess
-class EngineProcess {
+/// Manages the aria2 engine subprocess with self-healing capabilities
+class EngineProcess: ObservableObject {
+    enum EngineState: String {
+        case idle = "空闲"
+        case scanning = "正在扫描僵尸进程..."
+        case cleaning = "正在清理冲突进程..."
+        case starting = "正在启动引擎..."
+        case connecting = "正在建立连接..."
+        case running = "引擎运行中"
+        case failed = "引擎启动失败"
+    }
+
     private var process: Process?
     
-    // MARK: - Public Properties (Thread-safe access to actual runtime values)
+    @Published var state: EngineState = .idle
+    @Published var lastErrorMessage: String?
+    
+    // MARK: - Public Properties
     
     /// The actual port being used by the running aria2 process
-    private(set) var currentPort: Int = 16800
+    private(set) var currentPort: Int = 12800
     
     /// The actual secret being used by the running aria2 process  
     private(set) var currentSecret: String = ""
-    
-    /// The last error message or exit reason from the engine
-    private(set) var lastErrorMessage: String? = nil
     
     /// Callback triggered when a port conflict is detected that cannot be resolved automatically
     var onPortConflict: ((Int, String, Int32) -> Void)?
     
     // MARK: - Initialization
     
-    init(port: Int = 16800) {
+    init(port: Int = 12800) {
         let defaults = UserDefaults.standard
         
         // 1. Load or Generate Secret (Keep it stable if possible)
@@ -46,63 +57,48 @@ class EngineProcess {
     // MARK: - Lifecycle
     
     func start() {
-        // 1. Kill any known previous instance by PID or Name
-        killExistingProcess()
+        state = .scanning
+        Logger.info("EngineProcess: Starting self-healing sequence...")
         
-        // 2. Use the exact preferred port
+        // 1. Zombie Scan & Immediate Cleanup
+        zombieScan()
+        
+        // 2. Refresh runtime values
         let preferredPort = UserDefaults.standard.integer(forKey: "rpcPort") != 0 ? 
-                           UserDefaults.standard.integer(forKey: "rpcPort") : 16800
+                           UserDefaults.standard.integer(forKey: "rpcPort") : 12800
         currentPort = preferredPort
-        
-        // 3. Confirm Secret
         currentSecret = UserDefaults.standard.string(forKey: "rpcSecret") ?? currentSecret
         if currentSecret.isEmpty { currentSecret = Self.generateSecret() }
         
-        // 4. Check if the port is already occupied and if we can use it
+        // 3. Check if the port is already occupied (even after cleanup)
         if !isPortAvailable(currentPort) {
-            print("EngineProcess: Port \(currentPort) is occupied. Testing connection with current secret...")
-            
-            // Wait a moment in case it's in the middle of a restart
-            Thread.sleep(forTimeInterval: 0.8)
+            state = .cleaning
+            print("EngineProcess: Port \(currentPort) is occupied. Testing control...")
             
             // If we can connect with current secret, just use it!
             if testConnection(port: currentPort, secret: currentSecret) {
-                print("EngineProcess: Successfully verified and attached to existing aria2 instance on port \(currentPort).")
-                // Update runtime values to ensuring UI connects to this port
-                UserDefaults.standard.set(currentPort, forKey: "rpcRuntimePort")
-                UserDefaults.standard.set(currentSecret, forKey: "rpcSecret")
-                UserDefaults.standard.synchronize()
-                
-                // IMPORTANT: Since we are attaching to an external process, we must set our internal state 
-                // to reflect that we are "running" even though we didn't spawn the process object.
-                // We can't set `process` object but we can assume we are good.
-                // However, without a `process` object, `stop()` might be limited to RPC only. 
+                print("EngineProcess: Successfully verified and attached to existing aria2 instance.")
+                state = .running
                 return 
             }
             
-            print("EngineProcess: Port \(currentPort) is held by a process with a DIFFERENT secret or is unresponsive. Terminating definitively...")
-            killExistingProcess()
-            
-            // Wait longer for OS to release the socket
-            print("EngineProcess: Waiting for socket release...")
-            Thread.sleep(forTimeInterval: 2.0)
+            print("EngineProcess: Persistent conflict or secret mismatch. Force killing...")
+            aggressiveCleanup()
             
             if !isPortAvailable(currentPort) {
-                print("EngineProcess: WARNING - Port \(currentPort) still busy. Trying one more cleanup...")
-                killExistingProcess()
-                Thread.sleep(forTimeInterval: 1.0)
+                state = .failed
+                lastErrorMessage = "无法释放端口 \(currentPort)，请手动检查端口占用。"
+                return
             }
         }
             
         if !isPortAvailable(currentPort) {
-            print("EngineProcess: Port \(currentPort) is permanently occupied by an external process.")
-            
-            // STRICT MODE: We do NOT switch ports anymore. We alert the user.
-            DispatchQueue.main.async {
-                self.onPortConflict?(self.currentPort, "外部残留进程", 0)
-            }
+            state = .failed
+            lastErrorMessage = "端口 \(currentPort) 已被其他应用永久占用。"
             return
         }
+        
+        state = .starting
         
         // 5. Synchronize runtime values
         UserDefaults.standard.set(currentPort, forKey: "rpcRuntimePort")
@@ -147,7 +143,8 @@ class EngineProcess {
             try process?.run()
             let pid = process?.processIdentifier ?? 0
             writePidFile(pid: pid)
-            print("EngineProcess: aria2 launched (PID: \(pid)) on port \(currentPort)")
+            Logger.info("EngineProcess: aria2 launched (PID: \(pid)) on port \(currentPort)")
+            state = .running
             
             // Post-launch verification: check if it stayed alive
             DispatchQueue.global().asyncAfter(deadline: .now() + 1.0) { [weak self] in
@@ -162,7 +159,7 @@ class EngineProcess {
                 }
             }
         } catch {
-            print("EngineProcess: Failed to run process: \(error)")
+            Logger.error("EngineProcess: Failed to run process: \(error)")
         }
     }
     
@@ -182,18 +179,19 @@ class EngineProcess {
             process.terminate() // SIGTERM
         }
         
-        // Wait up to 2 seconds for exit
+        // Wait up to 1 second for exit (Reduced from 2.0s)
         let startTime = Date()
-        while process.isRunning && Date().timeIntervalSince(startTime) < 2.0 {
-            Thread.sleep(forTimeInterval: 0.1)
+        while process.isRunning && Date().timeIntervalSince(startTime) < 1.0 {
+            Thread.sleep(forTimeInterval: 0.05)
         }
         
         if process.isRunning {
-            print("EngineProcess: aria2 still running after 2s, using process.interrupt()")
-            process.interrupt() // SIGINT
+            print("EngineProcess: aria2 still running after timeout, forcing terminate")
+            process.terminate() // SIGTERM is better than interrupt for the final kick
         }
         
         print("EngineProcess: aria2 stopped status: \(!process.isRunning)")
+        state = .idle
     }
     
     /// Restart aria2 with new settings
@@ -212,7 +210,7 @@ class EngineProcess {
         // Read from UserDefaults if not provided
         if port == nil {
             currentPort = UserDefaults.standard.integer(forKey: "rpcPort")
-            if currentPort == 0 { currentPort = 16800 }
+            if currentPort == 0 { currentPort = 12800 }
         }
         
         if secret == nil {
@@ -225,9 +223,16 @@ class EngineProcess {
         UserDefaults.standard.synchronize()
         print("EngineProcess: Restart - Synced to UserDefaults - Port: \(currentPort), Secret: \(currentSecret)")
         
+        // STOP is not enough. We must ensure the old process is GONE.
+        // Otherwise start() might re-attach to the old instance if it hasn't exited yet.
         stop()
-        // Give it a moment to fully stop
+        
+        // Force cleanup to ensure port is free and we don't accidentally re-attach
+        aggressiveCleanup()
+        
+        // Give it a moment to settle
         Thread.sleep(forTimeInterval: 0.5)
+        
         start()
     }
     
@@ -290,11 +295,16 @@ class EngineProcess {
         // Read user preferences
         let maxConcurrent = UserDefaults.standard.integer(forKey: "maxConcurrentDownloads")
         let defaultConnections = UserDefaults.standard.integer(forKey: "defaultConnections")
+        print("EngineProcess: [Config Generation] Read defaultConnections from UserDefaults: \(defaultConnections)")
+        
         let maxDownloadSpeed = UserDefaults.standard.integer(forKey: "maxDownloadSpeed")
         let maxUploadSpeed = UserDefaults.standard.integer(forKey: "maxUploadSpeed")
         let btPort = UserDefaults.standard.integer(forKey: "btListenPort")
         let enableDht = UserDefaults.standard.bool(forKey: "enableDht")
         let userAgent = UserDefaults.standard.string(forKey: "userAgent") ?? "MotrixMac/2.0"
+        
+        // Force sync to ensure we have the latest written values from UI
+        UserDefaults.standard.synchronize()
         
         // Use current runtime values for RPC - NO LEADING SPACES in config file
         let config = """
@@ -343,27 +353,48 @@ file-allocation=falloc
         return configPath.path
     }
     
-    private func killExistingProcess() {
-        // In Sandbox, we cannot reliably kill processes by PID using kill() or ps.
-        // The most reliable way is RPC shutdown.
-        
-        print("EngineProcess: Cleanup - Trying RPC shutdown on port \(currentPort)...")
-        if testConnection(port: currentPort, secret: currentSecret) {
-            print("EngineProcess: Lingering aria2 found on port \(currentPort) with valid secret. Shutting down...")
-            sendRpcShutdown(port: currentPort, secret: currentSecret, force: true)
-            Thread.sleep(forTimeInterval: 1.0)
-        } else {
-            print("EngineProcess: Port \(currentPort) is either free or using a different secret.")
+    /// Comprehensive scan for port and process anomalies
+    private func zombieScan() {
+        if !isPortAvailable(currentPort) {
+            if testConnection(port: currentPort, secret: currentSecret) {
+                print("EngineProcess: Clean port occupancy detected.")
+            } else {
+                print("EngineProcess: Zombie process detected on port \(currentPort). Cleaning...")
+                aggressiveCleanup()
+            }
         }
+    }
 
-        // We can still try terminate() on our own process object if it exists
-        if let proc = process, proc.isRunning {
-            proc.terminate()
-            proc.waitUntilExit()
+    private func aggressiveCleanup() {
+        print("EngineProcess: AGGRESSIVE CLEANUP - Clearing all aria2c traces...")
+        
+        // 1. Kill all aria2c by name (MacOS specific)
+        let task = Process()
+        task.launchPath = "/usr/bin/killall"
+        task.arguments = ["-9", "aria2c"]
+        try? task.run()
+        task.waitUntilExit()
+        
+        // 2. Kill by PID file if exists
+        if let pid = readPidFile() {
+            forceKillProcess(pid: pid)
         }
         
+        // 3. Clear transient files
         removePidFile()
-        Thread.sleep(forTimeInterval: 0.5)
+        
+        // Short rest for OS socket release
+        Thread.sleep(forTimeInterval: 0.3)
+    }
+
+    private func killExistingProcess() {
+        aggressiveCleanup()
+    }
+    
+    /// Aggressively terminates a process by PID
+    private func forceKillProcess(pid: Int32) {
+        print("EngineProcess: Sending SIGKILL to PID \(pid)...")
+        kill(pid, SIGKILL)
     }
     
     /// Sends a shutdown command via RPC (Synchronous for cleanup use)
@@ -504,8 +535,8 @@ file-allocation=falloc
             "--rpc-listen-port=\(currentPort)",
             "--rpc-listen-all=false",
             "--enable-rpc=true",
-            "rpc-save-upload-metadata=true",
-            "check-certificate=false", // Disable strict SSL check to prevent handshake failures
+            "--rpc-save-upload-metadata=true",
+            "--check-certificate=false", // Disable strict SSL check to prevent handshake failures
             "--rpc-allow-origin-all=true"
         ]
     }

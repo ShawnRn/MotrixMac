@@ -21,7 +21,10 @@ struct MotrixMacApp: App {
                 .environment(\.locale, .init(identifier: language))
                 .frame(minWidth: 1000, minHeight: 600)
                 .onReceive(NotificationCenter.default.publisher(for: .openMainWindow)) { _ in
-                    // This triggers window to open via the menu or URL scheme
+                    openWindow(id: "main")
+                }
+                .onOpenURL { url in
+                    URLSchemeHandler.shared.handle(url)
                 }
         }
         .handlesExternalEvents(matching: ["*"])
@@ -98,13 +101,26 @@ struct MenuBarLabel: View {
     let showSpeed: Bool
 
     var body: some View {
-        HStack(alignment: .center, spacing: 2) {
-            Image(systemName: "arrow.down.circle.fill")
-                .font(.system(size: 14))
-            if showSpeed {
+        if showSpeed {
+            // Capsule style: Icon + Text
+            HStack(spacing: 4) {
+                Image(systemName: "arrow.down.circle.fill")
+                    .font(.system(size: 12))
                 Text(speed.formatted(.byteCount(style: .file)) + "/s")
-                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
             }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(
+                Capsule()
+                    .fill(.primary.opacity(0.1))
+                    .strokeBorder(.primary.opacity(0.2), lineWidth: 0.5)
+            )
+        } else {
+            // Default icon
+            Image(systemName: "arrow.down.circle.fill")
+                .font(.system(size: 16))
         }
     }
 }
@@ -116,6 +132,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var dockObserver: NSKeyValueObservation?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Start app logging
+        Logger.info("MotrixMacApp: App launched")
+        
         // Start aria2 engine
         let engine = EngineProcess()
         self.aria2Process = engine
@@ -128,7 +147,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 alert.informativeText = "MotrixMac 无法使用端口 \(port)，因为该端口被其他进程占用了。这通常是由于旧的 aria2c 进程未正常退出导致的。\n\n请尝试退出 App 并重新打开，系统可能会自动修复。如果问题持续，请在「活动监视器」中强制退出所有 aria2c 进程。"
                 alert.alertStyle = .critical
                 alert.addButton(withTitle: "退出 App")
-                // alert.addButton(withTitle: "忽略") // User requested to try restart, so just one option or maybe ignore? User said "try to normal exit app and reopen".
                 
                 let response = alert.runModal()
                 if response == .alertFirstButtonReturn {
@@ -145,13 +163,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Setup Notifications
         UNUserNotificationCenter.current().delegate = self
 
-        // Register URL schemes
-        NSAppleEventManager.shared().setEventHandler(
-            self,
-            andSelector: #selector(handleURLEvent(_:withReplyEvent:)),
-            forEventClass: AEEventClass(kInternetEventClass),
-            andEventID: AEEventID(kAEGetURL)
-        )
+        // NSAppleEventManager logic removed in favor of .onOpenURL
 
         // Apply initial Dock visibility
         if UserDefaults.standard.object(forKey: "showInDock") == nil {
@@ -220,15 +232,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return false  // Keep running in menu bar
     }
 
-    @objc func handleURLEvent(
-        _ event: NSAppleEventDescriptor, withReplyEvent replyEvent: NSAppleEventDescriptor
-    ) {
-        guard let urlString = event.paramDescriptor(forKeyword: keyDirectObject)?.stringValue,
-            let url = URL(string: urlString)
-        else { return }
-
-        URLSchemeHandler.shared.handle(url)
-    }
+    // URL handling moved to .onOpenURL in MotrixMacApp
 }
 
 extension AppDelegate: UNUserNotificationCenterDelegate {

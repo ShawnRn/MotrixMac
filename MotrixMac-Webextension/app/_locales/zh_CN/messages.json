@@ -28,7 +28,7 @@
         "description": "RPC 密钥标签"
     },
     "rpcKeyDesc": {
-        "message": "可在 Motrix 设置 > 进阶设置 > RPC 授权密钥 中找到",
+        "message": "可在 MotrixMac 设置 > 进阶设置 > RPC 授权密钥 中找到",
         "description": "RPC 密钥描述"
     },
     "rpcKeyPlaceholder": {
@@ -40,7 +40,7 @@
         "description": "RPC 端口标签"
     },
     "rpcPortDesc": {
-        "message": "默认值为 16800",
+        "message": "默认值为 12800",
         "description": "RPC 端口描述"
     },
     "behaviorTitle": {
@@ -60,7 +60,7 @@
         "description": "显示右键菜单标签"
     },
     "showContextDesc": {
-        "message": "显示“使用 Motrix 下载”选项",
+        "message": "显示「使用 MotrixMac 下载」选项",
         "description": "显示右键菜单描述"
     },
     "showNotificationsLabel": {
@@ -115,29 +115,37 @@
         "message": "隐藏浏览器的底部下载栏",
         "description": "隐藏下载栏描述"
     },
+    "logLevelLabel": {
+        "message": "日志级别",
+        "description": "日志级别标签"
+    },
+    "logLevelDesc": {
+        "message": "设置扩展日志的详细程度",
+        "description": "设置日志级别描述"
+    },
     "blacklistTitle": {
-        "message": "黑名单",
-        "description": "黑名单设置标题"
+        "message": "排除列表",
+        "description": "排除列表设置标题"
     },
     "blacklistPlaceholder": {
         "message": "输入域名或文件后缀（如 .jpg），每行一个",
-        "description": "黑名单占位符"
+        "description": "排除列表占位符"
     },
     "save": {
         "message": "保存",
         "description": "保存按钮文本"
     },
     "saveBlacklistBtn": {
-        "message": "保存黑名单",
-        "description": "保存黑名单按钮文本"
+        "message": "保存排除列表",
+        "description": "保存排除列表按钮文本"
     },
     "saved": {
         "message": "已保存！",
         "description": "保存反馈"
     },
     "blacklistSaved": {
-        "message": "黑名单已保存",
-        "description": "黑名单保存反馈"
+        "message": "排除列表已保存",
+        "description": "排除列表保存反馈"
     },
     "settingsSaved": {
         "message": "设置已保存",
@@ -146,6 +154,32 @@
     "downloadWithMotrix": {
         "message": "使用 MotrixMac 下载",
         "description": "右键菜单文本"
+    },
+    "addToBlacklist": {
+        "message": "不捕捉当前页面的下载项",
+        "description": "Popup blacklist button"
+    },
+    "blacklistAddedSuccess": {
+        "message": "已将「$HOSTNAME$」加入排除列表",
+        "description": "Success message for adding to blocklist",
+        "placeholders": {
+            "hostname": {
+                "content": "$1"
+            }
+        }
+    },
+    "blacklistAlreadyExists": {
+        "message": "「$HOSTNAME$」已在排除列表中",
+        "description": "Error message when already blocklisted",
+        "placeholders": {
+            "hostname": {
+                "content": "$1"
+            }
+        }
+    },
+    "blacklistAddFailed": {
+        "message": "加入排除列表失败",
+        "description": "Generic failure message"
     },
     "statusActive": {
         "message": "运行中",
@@ -164,7 +198,7 @@
         "description": "Button text Off"
     },
     "btnMotrix": {
-        "message": "Motrix",
+        "message": "MotrixMac",
         "description": "Button text Motrix"
     },
     "btnDownloads": {

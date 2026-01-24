@@ -24,8 +24,7 @@ export default class AriaDownloader {
 
   async handleStart(options, downloadItem, history) {
     // remove file from browsers history
-    await browser.downloads.pause(downloadItem.id);
-    const gid = await this.addDownloadToMotrix(options, downloadItem);
+    const gid = await this.addDownloadToMotrixMac(options, downloadItem);
     if (gid) {
       await removeFromHistory(downloadItem.id);
       this.startMonitoring(gid, downloadItem, history, options);
@@ -66,7 +65,7 @@ export default class AriaDownloader {
     }
   }
 
-  async addDownloadToMotrix(result, downloadItem) {
+  async addDownloadToMotrixMac(result, downloadItem) {
     const options = {
       host: '127.0.0.1',
       port: result.motrixPort,
@@ -74,14 +73,21 @@ export default class AriaDownloader {
       secret: result.motrixAPIkey,
       path: '/jsonrpc',
     };
-    console.log(`Motrix WebExtension: Connecting to RPC at 127.0.0.1:${result.motrixPort}`);
+    const maskedSecret = result.motrixAPIkey ? `${result.motrixAPIkey.substring(0, 2)}...` : 'empty';
+    console.log(`MotrixMac WebExtension: Connecting to RPC at 127.0.0.1:${result.motrixPort} with secret: ${maskedSecret}`);
     const aria2 = new Aria2(options);
     try {
-      await aria2.open();
+      console.log(`MotrixMac WebExtension: [addDownloadToMotrixMac] Opening connection...`);
+      // Add connection timeout
+      const openPromise = aria2.open();
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Connection timeout')), 5000)
+      );
+      await Promise.race([openPromise, timeoutPromise]);
     } catch (e) {
-      console.error('Motrix WebExtension: RPC connection failed:', e);
-      // Show notification on failure
-      this.showErrorNotification();
+      console.error('MotrixMac WebExtension: RPC connection failed:', e);
+      // Show notification on failure with specific details
+      this.showErrorNotification(`无法连接到 127.0.0.1:${result.motrixPort}。原因: ${e.message}`);
       throw e;
     }
 
@@ -96,7 +102,10 @@ export default class AriaDownloader {
 
     let params = {
       'remote-time': 'true',
-      'check-certificate': 'false'
+      'check-certificate': 'false',
+      'split': (result.defaultConnections || 128).toString(),
+      'max-connection-per-server': (result.defaultConnections || 128).toString(),
+      'min-split-size': '1M'
     };
 
     if (downloadItem.filename) {
@@ -122,10 +131,21 @@ export default class AriaDownloader {
       if (result.enableNotifications) {
         this.showSuccessNotification();
       }
+
+      // Bring MotrixMac to front
+      browser.tabs.create({ url: 'motrixmac://show' }).then(tab => {
+        // Close the temporary tab immediately if possible, or just let it trigger the scheme
+        setTimeout(() => {
+          if (tab && tab.id) {
+            browser.tabs.remove(tab.id).catch(() => { });
+          }
+        }, 1000);
+      });
+
       return gid;
     } catch (err) {
       console.error(`Error adding execution: ${err}`);
-      this.showErrorNotification();
+      this.showErrorNotification(`发送下载任务失败: ${err.message}`);
       throw err;
     }
   }
@@ -242,12 +262,12 @@ export default class AriaDownloader {
     });
   }
 
-  showErrorNotification() {
+  showErrorNotification(customMessage) {
     const notificationOptions = {
       type: 'basic',
       iconUrl: '../images/icon-large.png',
       title: '无法连接到 MotrixMac',
-      message: '请打开 MotrixMac 并确保在 偏好设置 > 进阶设置 > RPC 授权密钥 中设置了 API Key。点击此处打开 MotrixMac。',
+      message: customMessage || '请打开 MotrixMac 并确保在 偏好设置 > 进阶设置 > RPC 授权密钥 中设置了 API Key。点击此处打开 MotrixMac。',
     };
     const notificationId = Math.round(new Date().getTime() / 1000).toString();
     browser.notifications.create(notificationId, notificationOptions);

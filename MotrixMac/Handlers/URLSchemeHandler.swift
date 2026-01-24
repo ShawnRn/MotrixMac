@@ -135,17 +135,7 @@ class URLSchemeHandler {
         }
     }
 
-    // MARK: - Registration
-
-    static func registerURLSchemes() {
-        // Register as default handler for supported schemes
-        // This is typically done via Info.plist, but can be done programmatically too
-
-        for scheme in Scheme.allCases {
-            let bundleID = Bundle.main.bundleIdentifier ?? "app.motrix.native"
-            LSSetDefaultHandlerForURLScheme(scheme.rawValue as CFString, bundleID as CFString)
-        }
-    }
+    // MARK: - Registration (Moved to Info.plist/Modern API)
 }
 
 // MARK: - Browser Extension Support

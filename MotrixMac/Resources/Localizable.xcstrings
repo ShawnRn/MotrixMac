@@ -10,13 +10,19 @@
     "%lld 个任务" : {
 
     },
+    "%lld 分块" : {
+
+    },
+    "%lld 线程" : {
+
+    },
     "%lld%%" : {
 
     },
-    "+ 还有 %lld 个任务" : {
+    "•" : {
 
     },
-    "A full-featured download manager" : {
+    "+ 还有 %lld 个任务" : {
 
     },
     "about" : {
@@ -118,6 +124,33 @@
     "BT 监听端口" : {
 
     },
+    "Changelog" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新日志"
+          }
+        }
+      }
+    },
+    "Close" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭"
+          }
+        }
+      }
+    },
     "completed" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -147,7 +180,7 @@
         }
       }
     },
-    "Copyright © 2024 Shawn Rain. All rights reserved." : {
+    "Copyright © 2026 Shawn Rain. All rights reserved." : {
 
     },
     "delete" : {
@@ -175,6 +208,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "刪除"
+          }
+        }
+      }
+    },
+    "Done" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Done"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "完成"
           }
         }
       }
@@ -217,13 +266,43 @@
     "Gathering Metadata..." : {
 
     },
-    "GitHub Repository" : {
+    "GitHub" : {
 
     },
     "HTTP" : {
 
     },
+    "Inspiration" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inspiration"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "灵感来源"
+          }
+        }
+      }
+    },
     "KB/s" : {
+
+    },
+    "Licenses" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开源许可"
+          }
+        }
+      }
+    },
+    "Made with ❤️ by Shawn Rain" : {
 
     },
     "MotrixMac" : {
@@ -375,7 +454,7 @@
     "RPC 监听端口" : {
 
     },
-    "RPC 错误: %@" : {
+    "RPC 错误：%@" : {
 
     },
     "Save Settings" : {
@@ -457,6 +536,9 @@
     "User-Agent" : {
 
     },
+    "v%@" : {
+
+    },
     "Version %@ (%@)" : {
       "localizations" : {
         "en" : {
@@ -499,6 +581,9 @@
     "한국어" : {
 
     },
+    "一个轻量化的、全原生 Swift 实现的下载工具。" : {
+
+    },
     "下载" : {
 
     },
@@ -506,6 +591,9 @@
 
     },
     "下载链接" : {
+
+    },
+    "不再提示" : {
 
     },
     "主机" : {
@@ -547,7 +635,10 @@
     "最大下载速度" : {
 
     },
-    "最大同时下载数: %lld" : {
+    "最大同时下载数：%lld" : {
+
+    },
+    "分块进度" : {
 
     },
     "取消" : {
@@ -592,7 +683,7 @@
     "外观" : {
 
     },
-    "密码 (可选)" : {
+    "密码 （可选）" : {
 
     },
     "开始下载" : {
@@ -601,10 +692,19 @@
     "开机启动" : {
 
     },
+    "开源许可" : {
+
+    },
     "引擎启动失败" : {
 
     },
+    "引擎连接失败" : {
+
+    },
     "强制重置引擎" : {
+
+    },
+    "强行重置并修复" : {
 
     },
     "当前系统可能存在一个旧的 aria2 进程正在使用此端口，且其密钥与当前设置不符。" : {
@@ -622,6 +722,9 @@
     "打开主面板" : {
 
     },
+    "打开日志目录" : {
+
+    },
     "拖放种子文件到此处" : {
 
     },
@@ -629,6 +732,12 @@
 
     },
     "新建下载" : {
+
+    },
+    "日志" : {
+
+    },
+    "日志级别" : {
 
     },
     "日本語" : {
@@ -649,6 +758,9 @@
     "暂无用户" : {
 
     },
+    "更新日志" : {
+
+    },
     "更新频率" : {
 
     },
@@ -658,7 +770,7 @@
     "未选择任务" : {
 
     },
-    "格式: Header-Name: Value (每行一个)" : {
+    "格式：Header-Name: Value （每行一个）" : {
 
     },
     "此操作将仅从列表中移除任务记录，不会删除您的本地文件。" : {
@@ -691,7 +803,10 @@
     "清除下载历史" : {
 
     },
-    "用户名 (可选)" : {
+    "用户名 （可选）" : {
+
+    },
+    "由于上次异常退出，正在尝试自愈系统以确保稳定。" : {
 
     },
     "留空使用原始文件名" : {
@@ -727,7 +842,7 @@
     "线程数" : {
 
     },
-    "线程数: %lld" : {
+    "线程数：%lld" : {
 
     },
     "繁體中文" : {
@@ -752,6 +867,9 @@
 
     },
     "设为默认下载目录" : {
+
+    },
+    "设置应用程序日志的详细程度" : {
 
     },
     "详细信息" : {

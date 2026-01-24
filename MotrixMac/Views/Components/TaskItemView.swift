@@ -1,5 +1,12 @@
 import SwiftUI
 
+struct TaskItemFramePreferenceKey: PreferenceKey {
+    static var defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { $1 })
+    }
+}
+
 /// Individual download task item with Liquid Glass card styling
 struct TaskItemView: View {
     @Environment(DownloadManager.self) private var downloadManager
@@ -19,6 +26,7 @@ struct TaskItemView: View {
                 .fill(Color.accentColor)
                 .frame(width: 4)
                 .opacity(isSelected ? 1 : 0)
+                .animation(.none, value: isSelected) // IMMEDIATE FEEDBACK
                 .frame(height: 44)
                 .padding(.leading, -8) // Pull it slightly left
 
@@ -79,18 +87,12 @@ struct TaskItemView: View {
         .background {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(isSelected ? Color.blue.opacity(0.1) : Color.clear)
+                .animation(.none, value: isSelected) // IMMEDIATE FEEDBACK
         }
         .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.15)) {
                 isHovering = hovering
-            }
-        }
-        .onTapGesture(count: 2) {
-            if task.status == "complete" {
-                downloadManager.openFile(task)
-            } else {
-                onShowInfo()
             }
         }
         .contextMenu {
@@ -286,12 +288,6 @@ struct TaskActionButtons: View {
             }
             .help("显示详情")
             
-            if task.canCancel && task.status != "removed" {
-                ActionButton(icon: "xmark", color: .red) {
-                    Task { await downloadManager.cancelTask(task) }
-                }
-                .help("取消下载")
-            }
         }
     }
 }

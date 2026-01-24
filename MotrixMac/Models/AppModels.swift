@@ -23,6 +23,7 @@ struct DownloadTask: Identifiable, Equatable {
     var trackers: [TaskTracker]
     var addedAt: Date
     var errorMessage: String?
+    var bitfield: String?
     var downloadSpeedHistory: [Int64] = []
 
     // Computed properties
@@ -257,6 +258,7 @@ extension DownloadTask {
             trackers: [],
             addedAt: Date(),
             errorMessage: nil,
+            bitfield: "f0f0f0f0f0f0f0f0f0f0", // Sample bitfield
             downloadSpeedHistory: []
         )
     }

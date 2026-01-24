@@ -197,6 +197,14 @@ actor Aria2Service {
         return gids
     }
 
+    func changeGlobalOption(options: [String: String]) async throws {
+        _ = try await call(method: "aria2.changeGlobalOption", params: [options])
+    }
+
+    func changeOption(gid: String, options: [String: String]) async throws {
+        _ = try await call(method: "aria2.changeOption", params: [gid, options])
+    }
+
     func remove(gid: String) async throws {
         _ = try await call(method: "aria2.remove", params: [gid])
     }
@@ -414,7 +422,8 @@ actor Aria2Service {
             peers: peers,
             trackers: trackers,
             addedAt: Date(),  // Would need to track this separately
-            errorMessage: errorMessage
+            errorMessage: errorMessage,
+            bitfield: dict["bitfield"] as? String
         )
     }
 }

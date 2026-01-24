@@ -3,10 +3,13 @@ import AriaDownloader from './AriaDownloader';
 import BrowserDownloader from './BrowserDownloader';
 import { historyToArray } from './utils';
 import * as browser from 'webextension-polyfill';
+import { logger } from './utils/logger';
 
 // Track active downloads (Browser IDs only) to keep service worker alive for browser downloads
 // Use storage to persist active downloads across service worker suspensions
 let activeDownloads = new Set();
+// Track ignored downloads to prevent re-processing blacklisted items
+let ignoredDownloads = new Set();
 
 // Ensure listeners are set up immediately when the Service Worker starts/wakes up
 loadExtension();
@@ -16,15 +19,15 @@ async function downloadAgent() {
   const observable = new Observable((s) => subscribers.push(s));
   const history = new Map();
 
-  console.log('Motrix WebExtension: Service worker started');
+  logger.info('MotrixMac WebExtension: Service worker started');
 
   // Load active downloads from storage (Browser IDs)
   try {
     const { activeDownloadsList = [] } = await browser.storage.local.get(['activeDownloadsList']);
     activeDownloads = new Set(activeDownloadsList);
-    console.log(`Loaded ${activeDownloads.size} active browser downloads from storage`);
+    logger.info(`Loaded ${activeDownloads.size} active browser downloads from storage`);
   } catch (e) {
-    console.error('Error loading active downloads:', e);
+    logger.error('Error loading active downloads:', e);
   }
 
   // Setup history
@@ -44,22 +47,22 @@ async function downloadAgent() {
     const config = await browser.storage.sync.get(['motrixAPIkey', 'motrixPort']);
 
     // Default config if missing
-    if (!config.motrixPort) config.motrixPort = 16800;
+    if (!config.motrixPort) config.motrixPort = 12800;
 
-    console.log('Checking for downloads to resume...');
+    logger.info('Checking for downloads to resume...');
     let resumeCount = 0;
     for (const [gid, item] of history) {
       if (item.status === 'downloading' && item.downloader === 'aria') {
-        console.log(`Resuming monitoring for task ${gid}`);
+        logger.info(`Resuming monitoring for task ${gid}`);
         const downloader = new AriaDownloader();
         downloader.resume(config, gid, history);
         resumeCount++;
       }
     }
-    console.log(`Resumed ${resumeCount} Aria2 tasks`);
+    logger.info(`Resumed ${resumeCount} Aria2 tasks`);
 
   } catch (e) {
-    console.error('Error setting up history/resumption:', e);
+    logger.error('Error setting up history/resumption:', e);
   }
 
 
@@ -83,8 +86,23 @@ async function downloadAgent() {
   };
 
   // Hide bottom bar (Legacy/Browser download support)
-  browser.storage.sync.get(['hideChromeBar', 'extensionStatus']).then(({ hideChromeBar, extensionStatus }) => {
-    if (extensionStatus) browser.downloads.setShelfEnabled?.(!hideChromeBar);
+  const syncShelfState = async () => {
+    const { hideChromeBar, extensionStatus } = await browser.storage.sync.get(['hideChromeBar', 'extensionStatus']);
+    // If extension is OFF, we should definitely show the shelf.
+    // If extension is ON, we respect the hideChromeBar setting.
+    if (extensionStatus === false) {
+      browser.downloads.setShelfEnabled?.(true);
+    } else {
+      browser.downloads.setShelfEnabled?.(!hideChromeBar);
+    }
+  };
+
+  // Initial sync
+  syncShelfState();
+
+  // Re-sync on window creation (Edge/Chrome sometimes reset shelf on new windows)
+  browser.windows?.onCreated.addListener(() => {
+    syncShelfState();
   });
 
   browser.downloads.onChanged.addListener((delta) => {
@@ -109,7 +127,7 @@ async function downloadAgent() {
   const pendingDownloads = new Map();
 
   browser.downloads.onCreated.addListener(async function (downloadItem) {
-    console.log(`New download detected: ${downloadItem.id} - ${downloadItem.url}`);
+    logger.debug(`MotrixMac WebExtension: [onCreated] ID: ${downloadItem.id}, State: ${downloadItem.state}, URL: ${downloadItem.url}`);
 
     // Store download info for processing
     pendingDownloads.set(downloadItem.id, downloadItem);
@@ -121,9 +139,36 @@ async function downloadAgent() {
   });
 
   async function processDownload(downloadId) {
+    // Track ignored downloads (Blacklisted)
+    if (typeof ignoredDownloads === 'undefined') {
+      // Global scope hack or assume top level let
+    }
+
+    if (activeDownloads.has(downloadId)) {
+      logger.debug(`MotrixMac WebExtension: [processDownload] Skipping ID ${downloadId} (already being handled)`);
+      return;
+    }
+
+    // Check ignored
+    if (ignoredDownloads.has(downloadId)) {
+      logger.debug(`MotrixMac WebExtension: [processDownload] Skipping ID ${downloadId} (ignored/blacklisted)`);
+      return;
+    }
+
     const downloadItem = pendingDownloads.get(downloadId);
     if (!downloadItem) {
+      logger.debug(`MotrixMac WebExtension: [processDownload] Skipping ID ${downloadId} (not in pendingDownloads)`);
       return;
+    }
+    logger.info(`MotrixMac WebExtension: [processDownload] Processing ID ${downloadId}`);
+
+    // --- EARLY PAUSE ---
+    // Pause immediately to stop browser from downloading data while we process.
+    // Use try-catch to ignore "Download must be in progress" if it's already paused/handled.
+    try {
+      await browser.downloads.pause(downloadId);
+    } catch (e) {
+      logger.warn(`MotrixMac WebExtension: [processDownload] Early pause failed for ID ${downloadId} (may be already paused):`, e);
     }
 
     // Remove from pending to avoid double processing
@@ -137,11 +182,11 @@ async function downloadAgent() {
         .map((cookie) => `${cookie.name}=${cookie.value}`)
         .join('; ');
     } catch (e) {
-      console.warn('Could not fetch cookies:', e);
+      logger.warn('Could not fetch cookies:', e);
     }
 
     async function onError(error) {
-      console.log(`Error: ${error}`);
+      logger.error(`Error: ${error}`);
       removeActiveDownload(downloadId);
     }
 
@@ -153,51 +198,75 @@ async function downloadAgent() {
       'minFileSize',
       'blacklist',
       'motrixPort',
+      'defaultConnections',
       'downloadFallback',
     ]);
 
     const getAriaDownloader = async (options) => {
       const result = options;
-      // this will find item with by extension name set
+
+      // CRITICAL FIX: Restore missing search call
       const statuses = await browser.downloads.search({
         id: downloadId,
       });
 
-      const shouldCheck =
-        statuses[0]?.byExtensionName !== browser.i18n.getMessage('appName');
+      const appName = browser.i18n.getMessage('appName');
+      const shouldCheck = statuses[0]?.byExtensionName !== appName;
+
+      logger.debug(`MotrixMac WebExtension: [getAriaDownloader] ID: ${downloadId}, byExtensionName: ${statuses[0]?.byExtensionName}, appName: ${appName}, shouldCheck: ${shouldCheck}`);
 
       // Extension is disabled
-      if (shouldCheck && !result.extensionStatus) return;
+      if (shouldCheck && !result.extensionStatus) {
+        logger.info(`MotrixMac WebExtension: [getAriaDownloader] Extension is disabled in settings`);
+        return;
+      }
       // File size is known and it is smaller than the minimum file size (in mb)
       if (
         shouldCheck &&
         downloadItem.fileSize > 0 &&
         downloadItem.fileSize < result.minFileSize * 1024 * 1024
-      )
+      ) {
+        logger.info(`MotrixMac WebExtension: [getAriaDownloader] File size (${downloadItem.fileSize}) is smaller than minFileSize (${result.minFileSize} MB)`);
         return;
+      }
       // If url is on the blacklist then skip
+      // If url or referrer is on the blacklist then skip
       if (
         shouldCheck &&
-        result.blacklist
-          .map((x) => downloadItem.url.includes(x))
-          .reduce((prev, curr) => prev || curr, false)
+        (result.blacklist || []).some((x) =>
+          downloadItem.url.includes(x) ||
+          (downloadItem.referrer && downloadItem.referrer.includes(x))
+        )
       ) {
-        return;
+        logger.info(`MotrixMac WebExtension: [getAriaDownloader] URL or Referrer is on the blacklist, resuming browser download`);
+        // Critical: Resume so browser handles it natively
+        try {
+          await browser.downloads.resume(downloadId);
+        } catch (e) {
+          console.warn("Resume failed", e);
+        }
+        ignoredDownloads.add(downloadId);
+        return 'IGNORE';
       }
 
       return new AriaDownloader();
     };
 
     const getDownloader = async (options) => {
-      return (await getAriaDownloader(options)) ?? new BrowserDownloader();
+      const downloader = await getAriaDownloader(options);
+      if (downloader === 'IGNORE') return null;
+      return downloader ?? new BrowserDownloader();
     };
 
     getResult.then(async (result) => {
-      // Default port if not set
-      if (!result.motrixPort) {
-        result.motrixPort = 16800;
-        // await browser.storage.sync.set({ motrixPort: 16800 }); // Optional: could save back
-      }
+      // Default values if missing from storage
+      if (typeof result.extensionStatus === 'undefined') result.extensionStatus = true;
+      if (typeof result.motrixPort === 'undefined') result.motrixPort = 12800;
+      if (typeof result.minFileSize === 'undefined' || result.minFileSize === '') result.minFileSize = 0;
+      if (typeof result.enableNotifications === 'undefined') result.enableNotifications = true;
+      if (!result.blacklist) result.blacklist = [];
+
+      logger.info('MotrixMac WebExtension: Settings applied:', JSON.stringify(result));
 
       let downloader = await getDownloader(result);
 
@@ -206,7 +275,7 @@ async function downloadAgent() {
         return;
       }
 
-      console.log(`Using downloader: ${downloader.name}`);
+      logger.info(`Using downloader: ${downloader.name}`);
 
       // wait for filename to be set
       if (!downloadItem.filename) {
@@ -230,21 +299,21 @@ async function downloadAgent() {
       } catch (e) { }
 
       try {
-        console.log('Starting download with Motrix...');
+        logger.info('Starting download with MotrixMac...');
         await downloader.handleStart(result, downloadItem, history);
         // Note: AriaDownloader.handleStart will remove the file from browser history
         // which triggers onErased -> removeActiveDownload.
         // This is expected. We stop tracking it as a "Browser Download".
         // Instead, the 'history' logic and 'resume' logic handles it as an "Aria Download".
       } catch (error) {
-        console.error('Error sending to Motrix:', error);
+        logger.error('Error sending to MotrixMac:', error);
         // Fallback or cleanup
         if (downloader instanceof AriaDownloader) {
           if (
             typeof result.downloadFallback === 'undefined' ||
             result?.downloadFallback
           ) {
-            console.log('Falling back to browser download');
+            logger.info('Falling back to browser download');
             await browser.downloads.resume(downloadId);
             downloader = new BrowserDownloader();
             await downloader.handleStart(result, downloadItem, history);
@@ -281,7 +350,7 @@ export function createMenuItem() {
             contexts: ['link'],
           }, () => {
             if (browser.runtime.lastError) {
-              console.log('Motrix WebExtension: Context menu creation warning:', browser.runtime.lastError.message);
+              logger.warn('MotrixMac WebExtension: Context menu creation warning:', browser.runtime.lastError.message);
             }
           });
           browser.contextMenus.onClicked.addListener(clickHandler);
@@ -297,14 +366,14 @@ function loadExtension() {
 
 // Log service worker lifecycle events
 browser.runtime.onSuspend.addListener(() => {
-  console.log('Motrix WebExtension: Service worker being suspended');
+  logger.info('MotrixMac WebExtension: Service worker being suspended');
 });
 
 // Configure alarm to keep service worker alive
 browser.alarms.create('keepAlive', { periodInMinutes: 0.5 });
 browser.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'keepAlive') {
-    console.log('Motrix WebExtension: Keep-alive alarm triggered');
+    logger.debug('MotrixMac WebExtension: Keep-alive alarm triggered');
     // Calling loadExtension() here is redundant because the SW wakeup already runs top-level code.
     // But we could force a resume check if strict 'event driven' logic failed.
     // For now, reliance on top-level execution is cleaner.

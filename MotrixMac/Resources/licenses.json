@@ -1,0 +1,20 @@
+[
+    {
+        "name": "Motrix",
+        "license": "MIT",
+        "description": "A full-featured download manager. (https://github.com/agalwood/Motrix)\nCopyright (c) 2018-present Dr_rOot",
+        "type": "Applicaton"
+    },
+    {
+        "name": "aria2",
+        "license": "GPL-2.0",
+        "description": "Lightweight multi-protocol & multi-source command-line download utility. (https://aria2.github.io/)",
+        "type": "Core"
+    },
+    {
+        "name": "Motrix WebExtension",
+        "license": "GPL-3.0",
+        "description": "Browser extension for capturing downloads. (https://github.com/gautamkrishnar/motrix-webextension)",
+        "type": "Tooling"
+    }
+]

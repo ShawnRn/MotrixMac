@@ -53,19 +53,6 @@ struct SidebarView: View {
             .padding(.bottom, 24)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background {
-            // Subtle gradient for sidebar depth
-            LinearGradient(
-                colors: [
-                    Color.primary.opacity(0.02),
-                    Color.clear,
-                ],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-        }
-        // Note: .glassEffect(.sidebar) will be available in macOS 26 SDK
-        .background(.ultraThinMaterial)
         .ignoresSafeArea(.container, edges: .top)
     }
 }

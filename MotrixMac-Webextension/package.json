@@ -1,11 +1,11 @@
 {
   "name": "motrix-webextension",
-  "version": "2.0.1",
+  "version": "1.0.0",
   "description": "WebExtension for Motrix download manager",
   "scripts": {
     "dev": "webextension-toolbox dev",
     "build": "webextension-toolbox build",
-    "postbuild": "unzip -o ./packages/motrix-webextension.v2.0.0.chrome.zip -d ./chrome-extension-unpacked",
+    "postbuild": "unzip -o ./packages/motrix-webextension.v1.0.0.chrome.zip -d ./chrome-extension-unpacked",
     "lint": "eslint --fix app"
   },
   "repository": {

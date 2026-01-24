@@ -40,7 +40,7 @@
         "description": "RPC 連接埠標籤"
     },
     "rpcPortDesc": {
-        "message": "預設值為 16800",
+        "message": "預設值為 12800",
         "description": "RPC 連接埠描述"
     },
     "behaviorTitle": {
@@ -146,6 +146,32 @@
     "downloadWithMotrix": {
         "message": "使用 MotrixMac 下載",
         "description": "右鍵選單文字"
+    },
+    "addToBlacklist": {
+        "message": "不捕捉當前頁面的下載項",
+        "description": "Popup blacklist button"
+    },
+    "blacklistAddedSuccess": {
+        "message": "已將 $HOSTNAME$ 加入排除列表",
+        "description": "Success message for adding to blacklist",
+        "placeholders": {
+            "hostname": {
+                "content": "$1"
+            }
+        }
+    },
+    "blacklistAlreadyExists": {
+        "message": "$HOSTNAME$ 已在排除列表中",
+        "description": "Error message when already blacklisted",
+        "placeholders": {
+            "hostname": {
+                "content": "$1"
+            }
+        }
+    },
+    "blacklistAddFailed": {
+        "message": "加入排除列表失敗",
+        "description": "Generic failure message"
     },
     "statusActive": {
         "message": "已啟用",

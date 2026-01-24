@@ -5,12 +5,13 @@ import SwiftUI
 /// Main content view with Liquid Glass three-column navigation
 struct MainContentView: View {
     @Environment(DownloadManager.self) private var downloadManager
-    @State private var selectedCategory: TaskCategory = .downloading
+    @AppStorage("selectedCategory") private var selectedCategory: TaskCategory = .downloading
     @State private var selectedTaskIds: Set<String> = []
     // State for the main split view (Sidebar + Content)
     @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
-    @State private var isInspectorPresented: Bool = false
     @AppStorage("showInDock") private var showInDock = true
+    @State private var isInspectorPresented: Bool = false
+    @AppStorage("theme") private var appTheme = "auto"
 
     var body: some View {
         @Bindable var manager = downloadManager
@@ -27,8 +28,10 @@ struct MainContentView: View {
                 EmbeddedPreferencesView()
                     .environment(downloadManager)
             } else if selectedCategory == .about {
-                // Embedded about view
-                AboutView()
+                // Embedded about view with navigation support
+                NavigationStack {
+                    AboutView()
+                }
             } else {
                 // Task List + Detail Area
                 ZStack(alignment: .trailing) {
@@ -54,37 +57,77 @@ struct MainContentView: View {
                                 }
                             }
                         
-                        // Detail View
-                        TaskDetailView(task: task)
-                            .frame(width: 400)
-                            .background(.thickMaterial)
-                            .overlay(alignment: .topLeading) {
-                                Button {
-                                    withAnimation(.smooth(duration: 0.2)) {
-                                        isInspectorPresented = false
-                                    }
-                                } label: {
-                                    Image(systemName: "xmark")
-                                        .font(.system(size: 14, weight: .medium))
-                                        .foregroundStyle(.secondary)
-                                        .padding(8)
-                                        .background(.ultraThinMaterial, in: Circle())
+                        // Detail View Container
+                        ZStack(alignment: .topLeading) {
+                            TaskDetailView(task: task)
+                                .frame(width: 400)
+                                .frame(maxHeight: .infinity)
+                                .background(.ultraThinMaterial)
+                                .overlay(alignment: .leading) {
+                                    Rectangle()
+                                        .fill(Color.primary.opacity(0.05))
+                                        .frame(width: 1)
+                                        .frame(maxHeight: .infinity)
                                 }
-                                .buttonStyle(.plain)
-                                .padding(.top, 20)
-                                .padding(.leading, 12)
+                                .shadow(color: .black.opacity(0.08), radius: 15, x: -5, y: 0)
+                            
+                            // Absolute positioned close button
+                            Button {
+                                withAnimation(.smooth(duration: 0.2)) {
+                                    isInspectorPresented = false
+                                }
+                            } label: {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundStyle(.secondary)
+                                    .padding(8)
+                                    .background(.ultraThinMaterial, in: Circle())
                             }
-                            .transition(.move(edge: .trailing))
-                            .zIndex(1)
+                            .buttonStyle(.plain)
+                            .padding(.top, 8)
+                            .padding(.leading, 12)
+                        }
+                        .transition(.move(edge: .trailing))
+                        .zIndex(1)
                     }
                 }
             }
+        }
+        .preferredColorScheme(appTheme == "auto" ? nil : (appTheme == "dark" ? .dark : .light))
+        .id(appTheme) // Force full rebuild on theme setting change
+        .onAppear {
+            applyTheme(appTheme)
+            Task {
+                await downloadManager.connect()
+            }
+        }
+        .onChange(of: appTheme) { _, newValue in
+            applyTheme(newValue)
         }
         .onChange(of: selectedTaskIds) { oldValue, newValue in
             // Auto-close inspector if nothing is selected
             if newValue.isEmpty {
                 withAnimation(.smooth(duration: 0.2)) {
                     isInspectorPresented = false
+                }
+            }
+        }
+        .onChange(of: downloadManager.tasks) { oldTasks, newTasks in
+            // Auto-close inspector if the selected task completes (transitions to "complete")
+            guard isInspectorPresented,
+                  let selectedId = selectedTaskIds.first,
+                  let newTask = newTasks.first(where: { $0.id == selectedId }),
+                  newTask.status == "complete"
+            else { return }
+
+            // Ensure it wasn't already complete (allows viewing history items)
+            if let oldTask = oldTasks.first(where: { $0.id == selectedId }),
+               oldTask.status != "complete"
+            {
+                withAnimation(.smooth(duration: 0.2)) {
+                    isInspectorPresented = false
+                    // We also deselect it to reset the state completely, matching the "dismiss" behavior
+                    selectedTaskIds.removeAll()
                 }
             }
         }
@@ -111,15 +154,23 @@ struct MainContentView: View {
             AddTorrentSheet()
                 .environment(downloadManager)
         }
-        .onAppear {
-            Task {
-                await downloadManager.connect()
+    }
+
+    private func applyTheme(_ theme: String) {
+        // Force the app's appearance at the NSApplication level for maximum robustness on macOS
+        // This affects window title bar, standard controls, and system materials consistently.
+        DispatchQueue.main.async {
+            switch theme {
+            case "dark":
+                NSApp.appearance = NSAppearance(named: .darkAqua)
+            case "light":
+                NSApp.appearance = NSAppearance(named: .aqua)
+            default:
+                NSApp.appearance = nil // Follow system
             }
         }
     }
 }
-
-// MARK: - Toolbar Content
 
 // MARK: - Toolbar Content
 

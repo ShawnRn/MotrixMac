@@ -9,16 +9,16 @@ import {
   SettingsRow,
   ToggleSwitch,
   InputGroup,
-  TextArea,
+  Select,
+  BlacklistEditor,
   PrimaryButton
 } from './components/SettingsComponents';
+import { globalStyles } from './utils/theme';
+import { LogLevel } from './utils/logger';
+import styled from '@emotion/styled';
 
 // --- I18n Helper ---
 const i18n = (key) => browser.i18n.getMessage(key) || key;
-
-// --- Global Styles & Theme Variables ---
-
-import { globalStyles } from './utils/theme';
 
 // --- Styled Components ---
 
@@ -46,24 +46,23 @@ const Footer = styled.div`
   opacity: 0.6;
 `;
 
-import styled from '@emotion/styled';
-
 // --- Main App Component ---
 
 const ConfigApp = () => {
   const [settings, setSettings] = useState({
     motrixAPIkey: '',
-    motrixPort: 16800,
+    motrixPort: 12800,
+    defaultConnections: 128,
     extensionStatus: true,
     showContextOption: true,
     enableNotifications: true,
     minFileSize: '',
     hideChromeBar: true,
     blacklist: [],
-    theme: 'system'
+    theme: 'system',
+    logLevel: LogLevel.INFO
   });
 
-  const [blacklistText, setBlacklistText] = useState('');
   const [feedback, setFeedback] = useState({ open: false, message: '' });
 
   // Load settings
@@ -72,20 +71,22 @@ const ConfigApp = () => {
       const items = await browser.storage.sync.get([
         'motrixAPIkey',
         'motrixPort',
+        'defaultConnections',
         'extensionStatus',
         'showContextOption',
         'enableNotifications',
         'minFileSize',
         'hideChromeBar',
         'blacklist',
-        'theme'
+        'theme',
+        'logLevel'
       ]);
 
-      setSettings(prev => ({ ...prev, ...items }));
-      if (items.blacklist && Array.isArray(items.blacklist)) {
-        setBlacklistText(items.blacklist.join('\n'));
-      }
+      if (items.logLevel === undefined) items.logLevel = LogLevel.INFO;
+      // Ensure blacklist is an array
+      if (!Array.isArray(items.blacklist)) items.blacklist = [];
 
+      setSettings(prev => ({ ...prev, ...items }));
       // Apply theme
       applyTheme(items.theme || 'system');
     };
@@ -125,10 +126,18 @@ const ConfigApp = () => {
     showFeedback(i18n('settingsSaved'));
   };
 
-  const saveBlacklist = () => {
-    const list = blacklistText.split('\n').filter(x => x.trim() !== '');
-    updateSetting('blacklist', list);
-    showFeedback(i18n('blacklistSaved'));
+  const handleAddBlacklist = (newItem) => {
+    const currentList = settings.blacklist || [];
+    if (!currentList.includes(newItem)) {
+      const newList = [...currentList, newItem];
+      updateSetting('blacklist', newList);
+    }
+  };
+
+  const handleRemoveBlacklist = (item) => {
+    const currentList = settings.blacklist || [];
+    const newList = currentList.filter(x => x !== item);
+    updateSetting('blacklist', newList);
   };
 
   const showFeedback = (msg) => {
@@ -188,25 +197,30 @@ const ConfigApp = () => {
 
         <SettingsCard title={i18n('appearanceTitle')}>
           <SettingsRow label={i18n('darkModeLabel')} description={i18n('darkModeDesc')}>
-            <select
+            <Select
               value={settings.theme || 'system'}
               onChange={(e) => updateSetting('theme', e.target.value)}
-              style={{
-                padding: '8px',
-                borderRadius: '8px',
-                border: '1px solid var(--border-color)',
-                background: 'var(--input-bg)',
-                color: 'var(--text-primary)'
-              }}
             >
               <option value="system">{i18n('followSystem')}</option>
               <option value="light">{i18n('lightMode')}</option>
               <option value="dark">{i18n('darkMode')}</option>
-            </select>
+            </Select>
           </SettingsRow>
         </SettingsCard>
 
         <SettingsCard title={i18n('advancedTitle')}>
+          <SettingsRow label={i18n('logLevelLabel') || "Log Level"} description={i18n('logLevelDesc') || "Set the verbosity of extension logs"}>
+            <Select
+              value={settings.logLevel}
+              onChange={(e) => updateSetting('logLevel', Number(e.target.value))}
+            >
+              <option value={LogLevel.DEBUG}>Debug</option>
+              <option value={LogLevel.INFO}>Info</option>
+              <option value={LogLevel.WARN}>Warning</option>
+              <option value={LogLevel.ERROR}>Error</option>
+              <option value={LogLevel.OFF}>Off</option>
+            </Select>
+          </SettingsRow>
           <SettingsRow label={i18n('minFileSizeLabel')} description={i18n('minFileSizeDesc')}>
             <InputGroup
               value={settings.minFileSize}
@@ -226,17 +240,16 @@ const ConfigApp = () => {
         </SettingsCard>
 
         <SettingsCard title={i18n('blacklistTitle')}>
-          <div style={{ marginBottom: 12 }}>
-            <TextArea
-              value={blacklistText}
-              onChange={(e) => setBlacklistText(e.target.value)}
-              placeholder={i18n('blacklistPlaceholder')}
-            />
-            <PrimaryButton onClick={saveBlacklist}>{i18n('saveBlacklistBtn')}</PrimaryButton>
-          </div>
+          <BlacklistEditor
+            items={settings.blacklist || []}
+            onAdd={handleAddBlacklist}
+            onRemove={handleRemoveBlacklist}
+            placeholder={i18n('blacklistPlaceholder')}
+            cta={i18n('add') || "Add"}
+          />
         </SettingsCard>
 
-        <Footer>MotrixMac Extension v2.0.1</Footer>
+        <Footer>MotrixMac Extension v1.0.0</Footer>
 
         <Snackbar
           open={feedback.open}

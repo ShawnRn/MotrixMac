@@ -47,7 +47,6 @@ struct TaskDetailView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(.background.opacity(0.3))
     }
 }
 
@@ -190,6 +189,18 @@ struct GeneralTabView: View {
                     DetailSection(title: "速度走势") {
                         SpeedChartView(history: task.downloadSpeedHistory)
                             .padding(.top, 4)
+                        
+                        if let bitfield = task.bitfield, !bitfield.isEmpty {
+                            Divider()
+                                .padding(.vertical, 8)
+                            
+                            PieceProgressView(bitfield: bitfield, numPieces: task.numPieces, connections: task.connections)
+                                .padding(.bottom, 4)
+                        }
+                    }
+                } else if let bitfield = task.bitfield, !bitfield.isEmpty {
+                    DetailSection(title: "分块进度") {
+                        PieceProgressView(bitfield: bitfield, numPieces: task.numPieces, connections: task.connections)
                     }
                 }
 

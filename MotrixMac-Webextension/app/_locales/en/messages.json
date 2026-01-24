@@ -40,19 +40,19 @@
     "description": "Motrix API Key"
   },
   "blacklist": {
-    "message": "Blacklist",
-    "description": "Blacklist"
+    "message": "Blocklist",
+    "description": "Blocklist"
   },
   "saveBlacklist": {
-    "message": "Save blacklist",
-    "description": "Save blacklist"
+    "message": "Save blocklist",
+    "description": "Save blocklist"
   },
   "darkMode": {
     "message": "Dark mode",
     "description": "Dark mode"
   },
   "showOnlyAria": {
-    "message": "Show only Motrix downloads in the popup",
+    "message": "Show only MotrixMac downloads in the popup",
     "description": "Show only Motrix downloads in the popup"
   },
   "hideChromeBar": {
@@ -66,6 +66,32 @@
   "downloadWithMotrix": {
     "message": "Download with MotrixMac",
     "description": "Download with Motrix"
+  },
+  "addToBlacklist": {
+    "message": "Don't capture from this site",
+    "description": "Popup blocklist button"
+  },
+  "blacklistAddedSuccess": {
+    "message": "Added $HOSTNAME$ to blocklist",
+    "description": "Success message for adding to blocklist",
+    "placeholders": {
+      "hostname": {
+        "content": "$1"
+      }
+    }
+  },
+  "blacklistAlreadyExists": {
+    "message": "$HOSTNAME$ is already blocklisted",
+    "description": "Error message when already blocklisted",
+    "placeholders": {
+      "hostname": {
+        "content": "$1"
+      }
+    }
+  },
+  "blacklistAddFailed": {
+    "message": "Failed to add to blocklist",
+    "description": "Generic failure message"
   },
   "setPort": {
     "message": "Set Port",
@@ -88,7 +114,7 @@
     "description": "Label for RPC Key"
   },
   "rpcKeyDesc": {
-    "message": "Secret key found in Motrix Settings > Advanced",
+    "message": "Secret key found in MotrixMac Settings > Advanced",
     "description": "Description for RPC Key"
   },
   "rpcKeyPlaceholder": {
@@ -100,7 +126,7 @@
     "description": "Label for RPC Port"
   },
   "rpcPortDesc": {
-    "message": "Default is 16800",
+    "message": "Default is 12800",
     "description": "Description for RPC Port"
   },
   "behaviorTitle": {
@@ -171,29 +197,37 @@
     "message": "Hide the bottom download bar",
     "description": "Description for Hide Browser Shelf"
   },
+  "logLevelLabel": {
+    "message": "Log Level",
+    "description": "Label for Log Level"
+  },
+  "logLevelDesc": {
+    "message": "Set the verbosity of extension logs",
+    "description": "Description for Log Level"
+  },
   "blacklistTitle": {
-    "message": "Blacklist",
-    "description": "Blacklist settings title"
+    "message": "Blocklist",
+    "description": "Blocklist settings title"
   },
   "blacklistPlaceholder": {
     "message": "Enter domains or file extensions (e.g. .jpg) separated by new lines",
-    "description": "Placeholder for Blacklist"
+    "description": "Placeholder for Blocklist"
   },
   "save": {
     "message": "Save",
     "description": "Save button text"
   },
   "saveBlacklistBtn": {
-    "message": "Save Blacklist",
-    "description": "Save Blacklist button text"
+    "message": "Save Blocklist",
+    "description": "Save Blocklist button text"
   },
   "saved": {
     "message": "Saved!",
     "description": "Saved feedback text"
   },
   "blacklistSaved": {
-    "message": "Blacklist saved",
-    "description": "Blacklist saved feedback text"
+    "message": "Blocklist saved",
+    "description": "Blocklist saved feedback text"
   },
   "settingsSaved": {
     "message": "Settings saved",
@@ -216,7 +250,7 @@
     "description": "Button text Off"
   },
   "btnMotrix": {
-    "message": "Motrix",
+    "message": "MotrixMac",
     "description": "Button text Motrix"
   },
   "btnDownloads": {

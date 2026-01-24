@@ -16,7 +16,9 @@ struct AddTaskSheet: View {
     ).first!
     @State private var setAsDefault = false
     @State private var showAdvancedOptions = false
+    // Initialize with a safe default, will be updated in onAppear or via AppStorage
     @State private var connections = 16
+    @AppStorage("defaultConnections") private var storedDefaultConnections = 16
     @State private var customFilename = ""
     @State private var customHeaders = ""
     @State private var isValidURL = true
@@ -153,7 +155,7 @@ struct AddTaskSheet: View {
                                             .fill(.quaternary)
                                     }
 
-                                Text("格式: Header-Name: Value (每行一个)")
+                                Text("格式：Header-Name: Value （每行一个）")
                                     .font(.caption)
                                     .foregroundStyle(.tertiary)
                             }
@@ -212,10 +214,9 @@ struct AddTaskSheet: View {
                 saveDirectory = URL(fileURLWithPath: defaultDirectory)
             }
 
-            // Sync default connections
-            let defaultConns = UserDefaults.standard.integer(forKey: "defaultConnections")
-            if defaultConns > 0 {
-                connections = defaultConns
+            // Sync default connections from storage
+            if storedDefaultConnections > 0 {
+                connections = storedDefaultConnections
             }
         }
     }
@@ -267,6 +268,7 @@ struct AddTaskSheet: View {
         var options: [String: Any] = [
             "dir": saveDirectory.path(percentEncoded: false),
             "split": connections,
+            "max-connection-per-server": connections,
         ]
 
         if !customFilename.isEmpty {
@@ -300,6 +302,7 @@ struct AddTorrentSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var torrentURL: URL?
+    @AppStorage("defaultConnections") private var defaultConnections = 16
     @State private var saveDirectory = FileManager.default.urls(
         for: .downloadsDirectory, in: .userDomainMask
     ).first!
@@ -476,9 +479,21 @@ struct AddTorrentSheet: View {
             do {
                 let data = try Data(contentsOf: url)
                 let base64 = data.base64EncodedString()
+                
+                var options: [String: Any] = [
+                    "dir": saveDirectory.path(percentEncoded: false)
+                ]
+                
+                // Explicitly pass global connection settings
+                // This ensures we respect the user's preference without needing an engine restart
+                if defaultConnections > 0 {
+                    options["split"] = defaultConnections
+                    options["max-connection-per-server"] = defaultConnections
+                }
+                
                 try await downloadManager.addTorrent(
                     base64: base64,
-                    options: ["dir": saveDirectory.path(percentEncoded: false)]
+                    options: options
                 )
                 await MainActor.run {
                     dismiss()

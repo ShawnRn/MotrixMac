@@ -276,12 +276,11 @@
 				CODE_SIGN_ENTITLEMENTS = MotrixMac/MotrixMac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 20260123;
+				CURRENT_PROJECT_VERSION = 20260123.2;
 				DEVELOPMENT_TEAM = A4P8NY6A4J;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleURLTypes = "{\n    CFBundleURLName = \"MotrixMac URL\";\n    CFBundleURLSchemes =     (\n        motrix,\n        motrixmac,\n        mo,\n        magnet,\n        thunder\n    );\n}";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -310,12 +309,11 @@
 				CODE_SIGN_ENTITLEMENTS = MotrixMac/MotrixMac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 20260123;
+				CURRENT_PROJECT_VERSION = 20260123.2;
 				DEVELOPMENT_TEAM = A4P8NY6A4J;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleURLTypes = "{\n    CFBundleURLName = \"MotrixMac URL\";\n    CFBundleURLSchemes =     (\n        motrix,\n        motrixmac,\n        mo,\n        magnet,\n        thunder\n    );\n}";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";

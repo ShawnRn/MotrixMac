@@ -4,6 +4,8 @@ import SwiftUI
 
 /// Preferences view integrated with macOS Settings scene
 struct PreferencesView: View {
+    @AppStorage("theme") private var theme = "auto"
+    
     var body: some View {
         TabView {
             GeneralPreferencesTab()
@@ -33,6 +35,8 @@ struct PreferencesView: View {
 
 /// Embedded preferences view for display in main content area
 struct EmbeddedPreferencesView: View {
+    @AppStorage("theme") private var theme = "auto"
+    
     var body: some View {
         TabView {
             GeneralPreferencesTab()
@@ -153,16 +157,31 @@ struct DownloadsPreferencesTab: View {
             }
 
             Section {
-                Stepper("最大同时下载数: \(maxConcurrent)", value: $maxConcurrent, in: 1...10)
+                Stepper("最大同时下载数：\(maxConcurrent)", value: $maxConcurrent, in: 1...10)
 
                 // Slider without step parameter to avoid tick marks
                 Slider(
                     value: .init(
                         get: { Double(defaultConnections) },
                         set: { defaultConnections = Int($0) }
-                    ), in: 1...128
+                    ), in: 1...128,
+                    onEditingChanged: { editing in
+                        if !editing {
+                            // Fix: Explicitly force sync to UserDefaults to ensure EngineProcess sees the update immediately
+                            print("PreferencesView: Persistence fix - Writing defaultConnections = \(defaultConnections)")
+                            UserDefaults.standard.set(defaultConnections, forKey: "defaultConnections")
+                            UserDefaults.standard.synchronize()
+                            
+                            // Dynamic update: Apply settings immediately without restart
+                            Task { 
+                                await DownloadManager.shared.applyGlobalOptions()
+                                // Force restart to update configuration file for future raw RPC calls
+                                await DownloadManager.shared.restartEngine()
+                            }
+                        }
+                    }
                 ) {
-                    Text("线程数: \(defaultConnections)")
+                    Text("线程数：\(defaultConnections)")
                 }
             } header: {
                 Text("性能")
@@ -177,6 +196,9 @@ struct DownloadsPreferencesTab: View {
         }
         .formStyle(.grouped)
         .padding()
+        .onChange(of: maxConcurrent) { _, _ in
+            Task { await DownloadManager.shared.applyGlobalOptions() }
+        }
     }
 
     private func selectDirectory() {
@@ -214,10 +236,10 @@ struct NetworkPreferencesTab: View {
                     TextField("端口", text: $proxyPort)
                         .textFieldStyle(.roundedBorder)
 
-                    TextField("用户名 (可选)", text: $proxyUsername)
+                    TextField("用户名 （可选）", text: $proxyUsername)
                         .textFieldStyle(.roundedBorder)
 
-                    SecureField("密码 (可选)", text: $proxyPassword)
+                    SecureField("密码 （可选）", text: $proxyPassword)
                         .textFieldStyle(.roundedBorder)
                 }
             } header: {
@@ -263,7 +285,7 @@ struct AdvancedPreferencesTab: View {
     @Environment(DownloadManager.self) private var downloadManager
     
     // Use State for pending changes instead of AppStorage
-    @State private var rpcPort: Int = 16800
+    @State private var rpcPort: Int = 12800
     @State private var rpcSecret: String = ""
     @State private var enableUpnp: Bool = true
     @State private var enableDht: Bool = true
@@ -281,7 +303,7 @@ struct AdvancedPreferencesTab: View {
     @AppStorage("settingsAreDirty") private var settingsAreDirty = false
     
     // Track original values for dirty checking
-    @State private var originalRpcPort: Int = 16800
+    @State private var originalRpcPort: Int = 12800
     @State private var originalRpcSecret: String = ""
     @State private var originalEnableUpnp: Bool = true
     @State private var originalEnableDht: Bool = true
@@ -299,7 +321,7 @@ struct AdvancedPreferencesTab: View {
         let defaults = UserDefaults.standard
         
         let secret = defaults.string(forKey: "rpcSecret") ?? ""
-        let port = defaults.integer(forKey: "rpcPort") == 0 ? 16800 : defaults.integer(forKey: "rpcPort")
+        let port = defaults.integer(forKey: "rpcPort") == 0 ? 12800 : defaults.integer(forKey: "rpcPort")
         
         _rpcPort = State(initialValue: port)
         _rpcSecret = State(initialValue: secret)
@@ -407,7 +429,7 @@ struct AdvancedPreferencesTab: View {
                         .padding(6)
                         .background {
                             RoundedRectangle(cornerRadius: 6)
-                                .fill(Color(nsColor: .textBackgroundColor))
+                                .fill(Color(nsColor: .controlBackgroundColor))
                             RoundedRectangle(cornerRadius: 6)
                                 .stroke(Color.gray.opacity(0.2), lineWidth: 1)
                         }
@@ -461,7 +483,7 @@ struct AdvancedPreferencesTab: View {
                     .padding(6)
                     .background {
                         RoundedRectangle(cornerRadius: 6)
-                            .fill(Color(nsColor: .textBackgroundColor))
+                            .fill(Color(nsColor: .controlBackgroundColor))
                         RoundedRectangle(cornerRadius: 6)
                             .stroke(Color.gray.opacity(0.2), lineWidth: 1)
                     }
@@ -478,7 +500,7 @@ struct AdvancedPreferencesTab: View {
                             .foregroundStyle(.red)
                         
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("RPC 错误: \(rpcError == "Unauthorized" ? "授权失败 (密钥不匹配)" : rpcError)")
+                            Text("RPC 错误：\(rpcError == "Unauthorized" ? "授权失败 （密钥不匹配）" : rpcError)")
                                 .fontWeight(.medium)
                             Text("当前系统可能存在一个旧的 aria2 进程正在使用此端口，且其密钥与当前设置不符。")
                                 .font(.caption2)
@@ -542,7 +564,7 @@ struct AdvancedPreferencesTab: View {
                         .padding(6)
                         .background {
                             RoundedRectangle(cornerRadius: 6)
-                                .fill(Color(nsColor: .textBackgroundColor))
+                                .fill(Color(nsColor: .controlBackgroundColor))
                             RoundedRectangle(cornerRadius: 6)
                                 .stroke(Color.gray.opacity(0.2), lineWidth: 1)
                         }
@@ -561,6 +583,26 @@ struct AdvancedPreferencesTab: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             
+            // Log Settings
+            Section {
+                 Picker("日志级别", selection: Binding(
+                    get: { LogLevel(rawValue: UserDefaults.standard.integer(forKey: "LogLevel")) ?? .info },
+                    set: { Logger.shared.level = $0 }
+                )) {
+                    ForEach(LogLevel.allCases) { level in
+                        Text(level.description).tag(level)
+                    }
+                }
+                .pickerStyle(.menu)
+                .help("设置应用程序日志的详细程度")
+                
+                Button("打开日志目录") {
+                    openLogDirectory()
+                }
+            } header: {
+                Text("日志")
+            }
+
             // Reset
             Section {
                 HStack {
@@ -598,7 +640,7 @@ struct AdvancedPreferencesTab: View {
         let defaults = UserDefaults.standard
         // Always load the PREFERRED port for the UI field
         rpcPort = defaults.integer(forKey: "rpcPort")
-        if rpcPort == 0 { rpcPort = 16800 }
+        if rpcPort == 0 { rpcPort = 12800 }
         
         // Secret usually stays stable
         rpcSecret = defaults.string(forKey: "rpcSecret") ?? ""
@@ -749,6 +791,13 @@ struct AdvancedPreferencesTab: View {
         // Motrix usually formats them with empty lines.
         // Let's format them line by line.
         trackerListText = sorted.joined(separator: "\n\n")
+    }
+    private func openLogDirectory() {
+        if let libraryUrl = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first {
+            let logUrl = libraryUrl.appendingPathComponent("Logs/MotrixMac")
+            try? FileManager.default.createDirectory(at: logUrl, withIntermediateDirectories: true)
+            NSWorkspace.shared.open(logUrl)
+        }
     }
 }
 

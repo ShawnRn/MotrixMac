@@ -14,6 +14,16 @@ struct TaskListView: View {
     @State private var deleteFiles = false
     @State private var rememberChoice = false
     @State private var lastSelectedId: String? // Track last selection for Shift-click logic
+    
+    // Marquee Selection State
+    @State private var dragStart: CGPoint?
+    @State private var dragCurrent: CGPoint?
+    @State private var itemFrames: [String: CGRect] = [:]
+    @State private var initialSelectionBeforeDrag: Set<String> = []
+    
+    // Manual double-click tracking
+    @State private var lastClickTime: Date = .distantPast
+    @State private var lastClickId: String? = nil
 
     private var filteredTasks: [DownloadTask] {
         let categoryTasks = downloadManager.tasks.filter { task in
@@ -24,8 +34,7 @@ struct TaskListView: View {
             return categoryTasks.sorted(by: sortOrder)
         }
 
-        return
-            categoryTasks
+        return categoryTasks
             .filter { $0.name.localizedCaseInsensitiveContains(searchText) }
             .sorted(by: sortOrder)
     }
@@ -48,111 +57,264 @@ struct TaskListView: View {
 
             // Task list
             if !downloadManager.isConnected {
-                // Startup / Connecting State
-                VStack(spacing: 12) {
-                    ProgressView()
-                        .controlSize(.regular)
-                    Text("Starting download engine...")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                engineConnectingView
             } else if filteredTasks.isEmpty {
                 EmptyTaskListView(category: category)
             } else {
-                GeometryReader { geometry in
-                    ScrollView {
-                        LazyVStack(spacing: 8) {
-                            ForEach(filteredTasks) { task in
-                                TaskItemView(
-                                    task: task,
-                                    isSelected: selectedTaskIds.contains(task.id),
-                                    onShowInfo: {
-                                        if !selectedTaskIds.contains(task.id) {
-                                            selectedTaskIds = [task.id]
-                                        }
-                                        withAnimation(.spring(duration: 0.25)) {
-                                            isInspectorPresented = true
-                                        }
-                                    }
-                                )
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    handleTap(task: task)
-                                }
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.top, 12)
-                        }
-                        .frame(minHeight: geometry.size.height, alignment: .top)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            selectedTaskIds.removeAll()
-                            lastSelectedId = nil
-                        }
-                    }
-                    .scrollContentBackground(.hidden)
-                    .background(Color.clear)
-                    .focusable()
-                    .focusEffectDisabled()
-                }
+                taskScrollContent
             }
         }
         .background(.background.opacity(0.5))
         .onDeleteCommand {
-            guard !selectedTaskIds.isEmpty else { return }
-            let tasksToDelete = downloadManager.tasks.filter { selectedTaskIds.contains($0.id) }
-            
-            Task {
-                for t in tasksToDelete {
-                    await downloadManager.deleteTask(t, withFiles: false)
-                }
-                selectedTaskIds.removeAll()
-            }
+            deleteCommandAction()
         }
         .background {
-            // Select All (Cmd+A)
-            Button("") {
-                selectedTaskIds = Set(filteredTasks.map { $0.id })
-            }
-            .keyboardShortcut("a", modifiers: .command)
-            .hidden()
-            
-            // Delete Shortcuts
-            Button("") {
-                deleteSelectedTasks(withFiles: false)
-            }
-            .keyboardShortcut(.delete, modifiers: [])
-            .hidden()
-
-            Button("") {
-                 if !selectedTaskIds.isEmpty {
-                     showThoroughDeleteAlert = true
-                 }
-            }
-            .keyboardShortcut(.delete, modifiers: [.command, .option])
-            .hidden()
+            keyboardShortcutViews
         }
         .sheet(isPresented: $showThoroughDeleteAlert) {
-            DeleteConfirmationSheet(
-                taskName: selectedTaskIds.count == 1 
-                    ? (filteredTasks.first(where: { $0.id == selectedTaskIds.first })?.name ?? "1 个任务")
-                    : "\(selectedTaskIds.count) 个任务",
-                deleteFiles: $deleteFiles,
-                rememberChoice: $rememberChoice,
-                onConfirm: {
-                    if rememberChoice {
-                        downloadManager.skipDeleteConfirmation = true
-                        downloadManager.deleteWithFilesDefault = deleteFiles
+            thoroughDeleteSheet
+        }
+    }
+
+    @ViewBuilder
+    private var engineConnectingView: some View {
+        VStack(spacing: 12) {
+            ProgressView()
+                .controlSize(.regular)
+            Text("Starting download engine...")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - Task Scroll Content (Rewritten)
+    
+    @ViewBuilder
+    private var taskScrollContent: some View {
+        GeometryReader { outerGeometry in
+            ScrollView {
+                // Content container with minimum height to fill viewport
+                ZStack(alignment: .topLeading) {
+                    // Layer 1: Background for drag gesture and tap-to-deselect
+                    Color.clear
+                        .frame(minHeight: outerGeometry.size.height)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            // Tap on empty area clears selection
+                            selectedTaskIds.removeAll()
+                            lastSelectedId = nil
+                        }
+                        .gesture(
+                            DragGesture(minimumDistance: 5, coordinateSpace: .named("TaskListSpace"))
+                                .onChanged { value in
+                                    if dragStart == nil {
+                                        dragStart = value.startLocation
+                                        initialSelectionBeforeDrag = selectedTaskIds
+                                    }
+                                    dragCurrent = value.location
+                                    updateMarqueeSelection(isShortcutPressed: NSEvent.modifierFlags.contains(.command))
+                                }
+                                .onEnded { _ in
+                                    // Set lastSelectedId for subsequent Shift-click
+                                    if let last = itemFrames
+                                        .filter({ selectedTaskIds.contains($0.key) })
+                                        .sorted(by: { $0.value.minY < $1.value.minY })
+                                        .last?.key {
+                                        lastSelectedId = last
+                                    }
+                                    dragStart = nil
+                                    dragCurrent = nil
+                                }
+                        )
+                    
+                    // Layer 2: Task rows
+                    LazyVStack(spacing: 8) {
+                        ForEach(filteredTasks) { task in
+                            taskRow(task)
+                        }
                     }
-                    deleteSelectedTasks(withFiles: deleteFiles)
-                    showThoroughDeleteAlert = false
-                },
-                onCancel: {
-                    showThoroughDeleteAlert = false
+                    .padding(.top, 12)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 20)
+                    
+                    // Layer 3: Marquee selection overlay
+                    marqueeSelectionView
+                }
+                .coordinateSpace(name: "TaskListSpace")
+            }
+            .onPreferenceChange(TaskItemFramePreferenceKey.self) { frames in
+                itemFrames = frames
+            }
+            .scrollContentBackground(.hidden)
+            .background(Color.clear)
+            .overlay {
+                engineStatusOverlays
+            }
+            .focusable()
+            .focusEffectDisabled()
+        }
+    }
+    
+    // MARK: - Task Row (Rewritten)
+    
+    @ViewBuilder
+    private func taskRow(_ task: DownloadTask) -> some View {
+        let isSelected = selectedTaskIds.contains(task.id)
+        
+        Button(action: {
+            handleTap(task: task)
+        }) {
+            TaskItemView(
+                task: task,
+                isSelected: isSelected,
+                onShowInfo: {
+                    selectedTaskIds = [task.id]
+                    withAnimation(.spring(duration: 0.25)) {
+                        isInspectorPresented = true
+                    }
                 }
             )
+            // Single background with ZStack for selection highlight + frame reporter
+            .background(
+                ZStack {
+                    // Selection highlight
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.accentColor.opacity(0.1))
+                    }
+                    
+                    // Frame reporter (invisible, but captures geometry)
+                    GeometryReader { proxy in
+                        Color.clear
+                            .onAppear {
+                                // Force initial frame report
+                                itemFrames[task.id] = proxy.frame(in: .named("TaskListSpace"))
+                            }
+                            .preference(
+                                key: TaskItemFramePreferenceKey.self,
+                                value: [task.id: proxy.frame(in: .named("TaskListSpace"))]
+                            )
+                    }
+                }
+            )
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        // Double-click: open/pause/resume (using simultaneousGesture to not block single-click)
+        .simultaneousGesture(
+            TapGesture(count: 2).onEnded {
+                handleDoubleTap(task: task)
+            }
+        )
+    }
+
+    private func handleDoubleTap(task: DownloadTask) {
+        if task.status == "complete" {
+            downloadManager.openFile(task)
+        } else if task.canPause {
+            Task { await downloadManager.pauseTask(task) }
+        } else if task.canResume {
+            Task { await downloadManager.resumeTask(task) }
+        }
+    }
+
+    @ViewBuilder
+    private var marqueeSelectionView: some View {
+        if let start = dragStart, let end = dragCurrent {
+            let rect = CGRect(
+                x: min(start.x, end.x),
+                y: min(start.y, end.y),
+                width: abs(start.x - end.x),
+                height: abs(start.y - end.y)
+            )
+            Rectangle()
+                .fill(Color.accentColor.opacity(0.15))
+                .stroke(Color.accentColor.opacity(0.5), lineWidth: 1)
+                .frame(width: rect.width, height: rect.height)
+                .offset(x: rect.minX, y: rect.minY)
+        }
+    }
+
+    @ViewBuilder
+    private var engineStatusOverlays: some View {
+        Group {
+            if let engine = downloadManager.aria2Process, 
+               engine.state != .running && engine.state != .idle && !downloadManager.needsRepair {
+                EngineHealOverlay(state: engine.state)
+                    .transition(.opacity)
+            }
+            
+            if downloadManager.needsRepair {
+                EngineRepairOverlay()
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+    }
+
+    private func deleteCommandAction() {
+        guard !selectedTaskIds.isEmpty else { return }
+        
+        if downloadManager.skipDeleteConfirmation {
+             deleteSelectedTasks(withFiles: downloadManager.deleteWithFilesDefault)
+        } else {
+             deleteFiles = downloadManager.deleteWithFilesDefault
+             showThoroughDeleteAlert = true
+        }
+    }
+
+    @ViewBuilder
+    private var keyboardShortcutViews: some View {
+        // Select All (Cmd+A)
+        Button("") {
+            selectedTaskIds = Set(filteredTasks.map { $0.id })
+        }
+        .keyboardShortcut("a", modifiers: .command)
+        .hidden()
+        
+        // Delete Shortcuts
+        Button("") {
+            if !selectedTaskIds.isEmpty {
+                if downloadManager.skipDeleteConfirmation {
+                     deleteSelectedTasks(withFiles: downloadManager.deleteWithFilesDefault)
+                } else {
+                     deleteFiles = downloadManager.deleteWithFilesDefault
+                     showThoroughDeleteAlert = true
+                }
+            }
+        }
+        .keyboardShortcut(.delete, modifiers: [])
+        .hidden()
+
+        Button("") {
+             if !selectedTaskIds.isEmpty {
+                 showThoroughDeleteAlert = true
+             }
+        }
+        .keyboardShortcut(.delete, modifiers: [.command, .option])
+        .hidden()
+    }
+
+    @ViewBuilder
+    private var thoroughDeleteSheet: some View {
+        DeleteConfirmationSheet(
+            taskName: selectedTaskIds.count == 1 
+                ? (filteredTasks.first(where: { $0.id == selectedTaskIds.first })?.name ?? "1 个任务")
+                : "\(selectedTaskIds.count) 个任务",
+            deleteFiles: $deleteFiles,
+            rememberChoice: $rememberChoice,
+            onConfirm: {
+                if rememberChoice {
+                    downloadManager.skipDeleteConfirmation = true
+                    downloadManager.deleteWithFilesDefault = deleteFiles
+                }
+                deleteSelectedTasks(withFiles: deleteFiles)
+                showThoroughDeleteAlert = false
+            },
+            onCancel: {
+                showThoroughDeleteAlert = false
+            }
+            )
     }
 
     private func handleTap(task: DownloadTask) {
@@ -178,10 +340,37 @@ struct TaskListView: View {
             selectedTaskIds = [task.id]
             lastSelectedId = task.id
         }
+    }
+
+    private func updateMarqueeSelection(isShortcutPressed: Bool) {
+        guard let start = dragStart, let end = dragCurrent else { return }
         
-        withAnimation(.spring(duration: 0.25)) {
-             // Animate layout changes if any
+        // Normalize rect
+        let selectionRect = CGRect(
+            x: min(start.x, end.x),
+            y: min(start.y, end.y),
+            width: abs(start.x - end.x),
+            height: abs(start.y - end.y)
+        )
+        
+        var newSelection = isShortcutPressed ? initialSelectionBeforeDrag : Set<String>()
+        
+        for (id, frame) in itemFrames {
+            if selectionRect.intersects(frame) {
+                if isShortcutPressed {
+                    // Command toggle behavior during marquee
+                    if initialSelectionBeforeDrag.contains(id) {
+                        newSelection.remove(id)
+                    } else {
+                        newSelection.insert(id)
+                    }
+                } else {
+                    newSelection.insert(id)
+                }
+            }
         }
+        
+        selectedTaskIds = newSelection
     }
 
     private func deleteSelectedTasks(withFiles: Bool) {
@@ -199,7 +388,85 @@ struct TaskListView: View {
     }
 }
 
-// MARK: - Task List Header
+// MARK: - Helper Components for Selection
+
+struct TaskItemButtonStyle: ButtonStyle {
+    let isSelected: Bool
+    
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background {
+                if configuration.isPressed {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.accentColor.opacity(0.1))
+                }
+            }
+            .contentShape(Rectangle())
+            .animation(.none, value: configuration.isPressed)
+    }
+}
+
+// MARK: - Engine Repair Overlay
+
+struct EngineRepairOverlay: View {
+    @Environment(DownloadManager.self) private var downloadManager
+    @State private var isRepairing = false
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 40))
+                .foregroundStyle(.orange)
+
+            VStack(spacing: 8) {
+                Text("引擎连接失败")
+                    .font(.headline)
+                
+                Text(downloadManager.connectionError ?? "可能由于残留进程或密钥不一致导致。建议尝试强行重置。")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+            }
+
+            HStack(spacing: 12) {
+                Button("不再提示") {
+                    downloadManager.needsRepair = false
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+
+                Button {
+                    isRepairing = true
+                    Task {
+                        await downloadManager.forceRepair()
+                        isRepairing = false
+                    }
+                } label: {
+                    if isRepairing {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Text("强行重置并修复")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isRepairing)
+            }
+        }
+        .padding(24)
+        .background {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(.background)
+                .shadow(color: .black.opacity(0.2), radius: 20, x: 0, y: 10)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                }
+        }
+        .padding(40)
+        .frame(maxWidth: 400)
+    }
+}
 
 struct TaskListHeader: View {
     @Environment(DownloadManager.self) private var downloadManager
@@ -333,10 +600,13 @@ struct EmptyTaskListView: View {
                     downloadManager.showAddTaskSheet = true
                 } label: {
                     Label("添加下载", systemImage: "plus")
+                        .font(.system(size: 14, weight: .medium))
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
+                        .background(Color.accentColor.opacity(0.1), in: Capsule())
+                        .foregroundStyle(Color.accentColor)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.plain)
             }
 
             Spacer()
@@ -406,4 +676,43 @@ extension Array where Element == DownloadTask {
     )
     .environment(DownloadManager.shared)
     .frame(width: 400, height: 600)
+}
+
+// MARK: - Engine Heal Overlay (Passive status)
+
+struct EngineHealOverlay: View {
+    let state: EngineProcess.EngineState
+
+    var body: some View {
+        ZStack {
+            // High-end glassmorphism freeze
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .contentShape(Rectangle()) // Capture all taps
+            
+            VStack(spacing: 20) {
+                ProgressView()
+                    .controlSize(.large)
+                
+                VStack(spacing: 8) {
+                    Text(state.rawValue)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                    
+                    Text("由于上次异常退出，正在尝试自愈系统以确保稳定。")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+            }
+            .padding(40)
+            .background {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(.background)
+                    .shadow(color: .black.opacity(0.1), radius: 20, x: 0, y: 10)
+            }
+            .padding(40)
+        }
+        .ignoresSafeArea()
+    }
 }
