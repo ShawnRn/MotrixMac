@@ -26,7 +26,7 @@ MotrixMac is a native macOS download manager built with SwiftUI, designed for sp
 - 📡 **Auto Trackers**: Automatically updates tracker lists daily for better BT connectivity.
 - 🚀 **High Performance**: Supports up to 128 threads per task for blazing-fast downloads.
 - 🔌 **Universal Connectivity**: Integrated UPnP & NAT-PMP port mapping.
-- 🌍 **Browser Integration**: Comes with a robust WebExtension for Chrome, Edge, and Firefox.
+- 🌍 **Browser Integration**: Comes with a robust WebExtension for Chrome and Edge.
 - 🌑 **Modern Design**: Support for Dark Mode and a sleek, translucent "Liquid Glass" UI.
 - 🗑 **Smart Cleanup**: Option to delete associated files when removing tasks.
 
