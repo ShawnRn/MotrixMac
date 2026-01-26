@@ -32,8 +32,8 @@ MotrixMac 是一款使用 SwiftUI 构建的 macOS 原生下载管理器，旨在
 
 ## 🖥 应用截图
 
-![任务列表](./pics/screenshot-1.png)
-![详细信息](./pics/screenshot-2.png)
+![任务列表](./pics/Screenshot-1.png)
+![详细信息](./pics/Screenshot-2.png)
 ![菜单栏](./pics/screenshot-3.png)
 
 ## ⌨️ 开发指南

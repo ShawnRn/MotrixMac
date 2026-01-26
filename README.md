@@ -32,8 +32,8 @@ MotrixMac is a native macOS download manager built with SwiftUI, designed for sp
 
 ## 🖥 Screenshots
 
-![Task List](./pics/screenshot-1.png)
-![Task Details](./pics/screenshot-2.png)
+![Task List](./pics/Screenshot-1.png)
+![Task Details](./pics/Screenshot-2.png)
 ![Menu Bar](./pics/screenshot-3.png)
 
 ## ⌨️ Development
