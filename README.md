@@ -66,4 +66,4 @@ npm run build -- chrome
 
 ## 📜 License
 
-[MIT](https://opensource.org/license/MIT) Copyright (c) 2026 Shawn Rain.
+[MIT](https://opensource.org/license/MIT) Copyright (c) 2018-present Shawn Rain
