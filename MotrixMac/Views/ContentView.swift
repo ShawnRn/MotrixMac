@@ -5,8 +5,11 @@ import SwiftUI
 /// Main content view with Liquid Glass three-column navigation
 struct MainContentView: View {
     @Environment(DownloadManager.self) private var downloadManager
-    @AppStorage("selectedCategory") private var selectedCategory: TaskCategory = .downloading
+    @State private var selectedCategory: TaskCategory = .downloading
     @State private var selectedTaskIds: Set<String> = []
+    @State private var settingsTab: EmbeddedSettingsTab = .general
+    @Namespace private var settingsNamespace
+    
     // State for the main split view (Sidebar + Content)
     @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
     @AppStorage("showInDock") private var showInDock = true
@@ -16,82 +19,82 @@ struct MainContentView: View {
     var body: some View {
         @Bindable var manager = downloadManager
 
-        // Outer SplitView for Sidebar and Main Content
         NavigationSplitView(columnVisibility: $sidebarVisibility) {
             // Sidebar
             SidebarView(selectedCategory: $selectedCategory)
                 .navigationSplitViewColumnWidth(min: 220, ideal: 220, max: 280)
         } detail: {
-            // Content Area - show settings or task list
-            if selectedCategory == .settings {
-                // Embedded settings view
-                EmbeddedPreferencesView()
+            ZStack {
+                // Layer 1: Settings - Persistently cached in memory
+                EmbeddedPreferencesView(activeTab: $settingsTab)
                     .environment(downloadManager)
-            } else if selectedCategory == .about {
-                // Embedded about view with navigation support
+                    .opacity(selectedCategory == .settings ? 1 : 0)
+                    .allowsHitTesting(selectedCategory == .settings)
+
+                // Layer 2: About
                 NavigationStack {
                     AboutView()
                 }
-            } else {
-                // Task List + Detail Area
-                ZStack(alignment: .trailing) {
-                    // Base Layer: Task List (Full Width)
-                    TaskListView(
-                        category: selectedCategory,
-                        selectedTaskIds: $selectedTaskIds,
-                        isInspectorPresented: $isInspectorPresented
-                    )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .opacity(selectedCategory == .about ? 1 : 0)
+                .allowsHitTesting(selectedCategory == .about)
 
-                    // Overlay Layer: Dismiss Barrier & Detail View
-                    if isInspectorPresented,
-                        !selectedTaskIds.isEmpty,
-                        let taskId = selectedTaskIds.first,
-                        let task = downloadManager.tasks.first(where: { $0.id == taskId })
-                    {
-                        // Dismiss Barrier: Catches clicks outside the detail pane
-                        Color.black.opacity(0.01)
-                            .onTapGesture {
-                                withAnimation(.smooth(duration: 0.2)) {
-                                    selectedTaskIds.removeAll()
+                // Layer 3: Task Lists (All categories except settings/about)
+                if selectedCategory != .settings && selectedCategory != .about {
+                    ZStack(alignment: .trailing) {
+                        TaskListView(
+                            category: selectedCategory,
+                            selectedTaskIds: $selectedTaskIds,
+                            isInspectorPresented: $isInspectorPresented
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                        // Overlay Layer: Dismiss Barrier & Detail View
+                        if isInspectorPresented,
+                            !selectedTaskIds.isEmpty,
+                            let taskId = selectedTaskIds.first,
+                            let task = downloadManager.tasks.first(where: { $0.id == taskId })
+                        {
+                            Color.black.opacity(0.01)
+                                .onTapGesture {
+                                    withAnimation(.smooth(duration: 0.2)) {
+                                        selectedTaskIds.removeAll()
+                                    }
                                 }
-                            }
-                        
-                        // Detail View Container
-                        ZStack(alignment: .topLeading) {
-                            TaskDetailView(task: task)
-                                .frame(width: 400)
-                                .frame(maxHeight: .infinity)
-                                .background(.ultraThinMaterial)
-                                .overlay(alignment: .leading) {
-                                    Rectangle()
-                                        .fill(Color.primary.opacity(0.05))
-                                        .frame(width: 1)
-                                        .frame(maxHeight: .infinity)
-                                }
-                                .shadow(color: .black.opacity(0.08), radius: 15, x: -5, y: 0)
                             
-                            // Absolute positioned close button
-                            Button {
-                                withAnimation(.smooth(duration: 0.2)) {
-                                    isInspectorPresented = false
+                            ZStack(alignment: .topLeading) {
+                                TaskDetailView(task: task)
+                                    .frame(width: 400)
+                                    .frame(maxHeight: .infinity)
+                                    .background(.ultraThinMaterial)
+                                    .overlay(alignment: .leading) {
+                                        Rectangle()
+                                            .fill(Color.primary.opacity(0.05))
+                                            .frame(width: 1)
+                                    }
+                                    .shadow(color: .black.opacity(0.08), radius: 15, x: -5, y: 0)
+                                
+                                Button {
+                                    withAnimation(.smooth(duration: 0.2)) {
+                                        isInspectorPresented = false
+                                    }
+                                } label: {
+                                    Image(systemName: "xmark")
+                                        .font(.system(size: 14, weight: .medium))
+                                        .foregroundStyle(.secondary)
+                                        .padding(8)
+                                        .background(.ultraThinMaterial, in: Circle())
                                 }
-                            } label: {
-                                Image(systemName: "xmark")
-                                    .font(.system(size: 14, weight: .medium))
-                                    .foregroundStyle(.secondary)
-                                    .padding(8)
-                                    .background(.ultraThinMaterial, in: Circle())
+                                .buttonStyle(.plain)
+                                .padding(.top, 8)
+                                .padding(.leading, 12)
                             }
-                            .buttonStyle(.plain)
-                            .padding(.top, 8)
-                            .padding(.leading, 12)
+                            .transition(.move(edge: .trailing))
+                            .zIndex(1)
                         }
-                        .transition(.move(edge: .trailing))
-                        .zIndex(1)
                     }
                 }
             }
+            .animation(.none, value: selectedCategory) // Instant switch for performance
         }
         .preferredColorScheme(appTheme == "auto" ? nil : (appTheme == "dark" ? .dark : .light))
         .id(appTheme) // Force full rebuild on theme setting change
@@ -135,14 +138,24 @@ struct MainContentView: View {
             selectedCategory = .settings
             sidebarVisibility = .all
         }
-        // Note: .glassEffectContainer() will be available in macOS 26 SDK
         // For now, using standard styling
+        .onChange(of: downloadManager.shouldResetNavigation) { _, newValue in
+            if newValue {
+                selectedCategory = .downloading
+                downloadManager.shouldResetNavigation = false
+            }
+        }
         .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                ToolbarButtons()
+            ToolbarItem(placement: .principal) {
+                if selectedCategory == .settings {
+                    LiquidSettingsPicker(selection: $settingsTab)
+                } else {
+                    Spacer() // Acts as a full-width glue to push everything to the right
+                }
             }
             
-            ToolbarItem(placement: .confirmationAction) {
+            ToolbarItemGroup(placement: .primaryAction) {
+                ToolbarButtons()
                 ToolbarSpeedIndicator()
             }
         }

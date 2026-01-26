@@ -146,7 +146,7 @@ struct TaskDetailHeader: View {
                         if task.isActive && task.displayStatus != "Connecting..."
                             && task.totalLength > 0
                         {
-                            Text("ETA: \(task.eta)")
+                            Text("剩余时间: \(task.eta)")
                         }
                     }
                     .font(.caption)

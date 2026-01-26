@@ -73,16 +73,7 @@ class EngineProcess: ObservableObject {
         // 3. Check if the port is already occupied (even after cleanup)
         if !isPortAvailable(currentPort) {
             state = .cleaning
-            print("EngineProcess: Port \(currentPort) is occupied. Testing control...")
-            
-            // If we can connect with current secret, just use it!
-            if testConnection(port: currentPort, secret: currentSecret) {
-                print("EngineProcess: Successfully verified and attached to existing aria2 instance.")
-                state = .running
-                return 
-            }
-            
-            print("EngineProcess: Persistent conflict or secret mismatch. Force killing...")
+            print("EngineProcess: Port \(currentPort) is occupied. Force cleaning to ensure App ownership...")
             aggressiveCleanup()
             
             if !isPortAvailable(currentPort) {
@@ -166,31 +157,43 @@ class EngineProcess: ObservableObject {
 
     
     func stop() {
-        guard let process = process, process.isRunning else { return }
+        // 1. Try graceful stop if we have the reference
+        if let process = process, process.isRunning {
+            print("EngineProcess: Stopping aria2 (PID: \(process.processIdentifier))...")
+            
+            // Try RPC shutdown first (save session)
+            if testConnection(port: currentPort, secret: currentSecret) {
+                sendRpcShutdown(port: currentPort, secret: currentSecret, force: false)
+                
+                // Wait for a short moment for aria2 to save its state and exit
+                let startTime = Date()
+                while process.isRunning && Date().timeIntervalSince(startTime) < 0.5 {
+                    Thread.sleep(forTimeInterval: 0.05)
+                }
+            }
+            
+            // If still running, use term signal
+            if process.isRunning {
+                process.terminate() // SIGTERM
+                
+                let startTime = Date()
+                while process.isRunning && Date().timeIntervalSince(startTime) < 0.3 {
+                    Thread.sleep(forTimeInterval: 0.05)
+                }
+            }
+        }
         
-        print("EngineProcess: Stopping aria2 (PID: \(process.processIdentifier))...")
-        
-        // Try RPC shutdown first for graceful exit
-        if testConnection(port: currentPort, secret: currentSecret) {
-            print("EngineProcess: Sending RPC shutdown...")
-            sendRpcShutdown(port: currentPort, secret: currentSecret, force: false)
+        // 2. Final Check & Aggressive Cleanup only if necessary
+        if !isPortAvailable(currentPort) {
+            print("EngineProcess: Port still busy after stop, performing aggressive cleanup...")
+            aggressiveCleanup()
         } else {
-            // Signal-based termination if RPC unreachable
-            process.terminate() // SIGTERM
+            // Even if port is free, clean up our own process reference
+            process?.terminate()
+            removePidFile()
         }
         
-        // Wait up to 1 second for exit (Reduced from 2.0s)
-        let startTime = Date()
-        while process.isRunning && Date().timeIntervalSince(startTime) < 1.0 {
-            Thread.sleep(forTimeInterval: 0.05)
-        }
-        
-        if process.isRunning {
-            print("EngineProcess: aria2 still running after timeout, forcing terminate")
-            process.terminate() // SIGTERM is better than interrupt for the final kick
-        }
-        
-        print("EngineProcess: aria2 stopped status: \(!process.isRunning)")
+        print("EngineProcess: Engine shutdown complete.")
         state = .idle
     }
     
@@ -356,12 +359,8 @@ file-allocation=falloc
     /// Comprehensive scan for port and process anomalies
     private func zombieScan() {
         if !isPortAvailable(currentPort) {
-            if testConnection(port: currentPort, secret: currentSecret) {
-                print("EngineProcess: Clean port occupancy detected.")
-            } else {
-                print("EngineProcess: Zombie process detected on port \(currentPort). Cleaning...")
-                aggressiveCleanup()
-            }
+            print("EngineProcess: Port \(currentPort) is occupied at launch. Cleaning to ensure fresh start...")
+            aggressiveCleanup()
         }
     }
 
@@ -372,19 +371,18 @@ file-allocation=falloc
         let task = Process()
         task.launchPath = "/usr/bin/killall"
         task.arguments = ["-9", "aria2c"]
+        // Run synchronously but with a timeout to avoid hanging if killall hangs
         try? task.run()
-        task.waitUntilExit()
         
         // 2. Kill by PID file if exists
-        if let pid = readPidFile() {
-            forceKillProcess(pid: pid)
+        DispatchQueue.global().async {
+            if let pid = self.readPidFile() {
+                self.forceKillProcess(pid: pid)
+            }
+            self.removePidFile()
         }
         
-        // 3. Clear transient files
-        removePidFile()
-        
-        // Short rest for OS socket release
-        Thread.sleep(forTimeInterval: 0.3)
+        task.waitUntilExit()
     }
 
     private func killExistingProcess() {

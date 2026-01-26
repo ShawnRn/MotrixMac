@@ -30,6 +30,24 @@ struct AboutView: View {
     ]
     @State private var changelogs: [ChangelogItem] = [
         ChangelogItem(
+            version: "1.0.5",
+            date: "2026-01-26",
+            changes: [
+                "修改了部分界面文本表述。",
+                "修改了部分界面样式，速度指示器移到右上角。",
+                "修复了一些 bug，优化了性能。"
+            ]
+        ),
+        ChangelogItem(
+            version: "1.0.4",
+            date: "2026-01-24",
+            changes: [
+                "修复了打开 App 默认不会回到主页的问题。",
+                "修复了 URL Scheme 不起作用的问题。",
+                "修复了双击 Dock 图标会打开多个窗口的问题。"
+            ]
+        ),
+        ChangelogItem(
             version: "1.0.3",
             date: "2026-01-24",
             changes: [

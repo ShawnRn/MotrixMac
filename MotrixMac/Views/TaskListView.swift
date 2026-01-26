@@ -8,12 +8,11 @@ struct TaskListView: View {
     @Binding var selectedTaskIds: Set<String>
     @Binding var isInspectorPresented: Bool
 
-    @State private var searchText = ""
-    @State private var sortOrder: SortOrder = .dateAdded
     @State private var showThoroughDeleteAlert = false
     @State private var deleteFiles = false
     @State private var rememberChoice = false
     @State private var lastSelectedId: String? // Track last selection for Shift-click logic
+    @State private var isDeleteAllMode = false // New state for delete all
     
     // Marquee Selection State
     @State private var dragStart: CGPoint?
@@ -25,28 +24,22 @@ struct TaskListView: View {
     @State private var lastClickTime: Date = .distantPast
     @State private var lastClickId: String? = nil
 
-    private var filteredTasks: [DownloadTask] {
-        let categoryTasks = downloadManager.tasks.filter { task in
-            category.aria2Status.contains(task.status)
-        }
-
-        if searchText.isEmpty {
-            return categoryTasks.sorted(by: sortOrder)
-        }
-
-        return categoryTasks
-            .filter { $0.name.localizedCaseInsensitiveContains(searchText) }
-            .sorted(by: sortOrder)
-    }
 
     var body: some View {
+        @Bindable var manager = downloadManager
+        
         VStack(spacing: 0) {
             // Header with search and sort
             TaskListHeader(
                 category: category,
-                taskCount: filteredTasks.count,
-                searchText: $searchText,
-                sortOrder: $sortOrder
+                taskCount: downloadManager.filteredTasks.count,
+                searchText: $manager.searchText,
+                sortOrder: $manager.sortOrder,
+                onDeleteAll: {
+                    isDeleteAllMode = true
+                    deleteFiles = downloadManager.deleteWithFilesDefault
+                    showThoroughDeleteAlert = true
+                }
             )
             .padding(.horizontal, 20)
             .padding(.top, 20)
@@ -58,7 +51,7 @@ struct TaskListView: View {
             // Task list
             if !downloadManager.isConnected {
                 engineConnectingView
-            } else if filteredTasks.isEmpty {
+            } else if downloadManager.filteredTasks.isEmpty {
                 EmptyTaskListView(category: category)
             } else {
                 taskScrollContent
@@ -73,6 +66,12 @@ struct TaskListView: View {
         }
         .sheet(isPresented: $showThoroughDeleteAlert) {
             thoroughDeleteSheet
+        }
+        .onAppear {
+            downloadManager.currentCategory = category
+        }
+        .onChange(of: category) { _, newValue in
+            downloadManager.currentCategory = newValue
         }
     }
 
@@ -130,7 +129,7 @@ struct TaskListView: View {
                     
                     // Layer 2: Task rows
                     LazyVStack(spacing: 8) {
-                        ForEach(filteredTasks) { task in
+                        ForEach(downloadManager.filteredTasks) { task in
                             taskRow(task)
                         }
                     }
@@ -267,7 +266,7 @@ struct TaskListView: View {
     private var keyboardShortcutViews: some View {
         // Select All (Cmd+A)
         Button("") {
-            selectedTaskIds = Set(filteredTasks.map { $0.id })
+            selectedTaskIds = Set(downloadManager.filteredTasks.map { $0.id })
         }
         .keyboardShortcut("a", modifiers: .command)
         .hidden()
@@ -298,9 +297,7 @@ struct TaskListView: View {
     @ViewBuilder
     private var thoroughDeleteSheet: some View {
         DeleteConfirmationSheet(
-            taskName: selectedTaskIds.count == 1 
-                ? (filteredTasks.first(where: { $0.id == selectedTaskIds.first })?.name ?? "1 个任务")
-                : "\(selectedTaskIds.count) 个任务",
+            taskName: thoroughDeleteDisplayName,
             deleteFiles: $deleteFiles,
             rememberChoice: $rememberChoice,
             onConfirm: {
@@ -308,10 +305,21 @@ struct TaskListView: View {
                     downloadManager.skipDeleteConfirmation = true
                     downloadManager.deleteWithFilesDefault = deleteFiles
                 }
-                deleteSelectedTasks(withFiles: deleteFiles)
+                
+                if isDeleteAllMode {
+                    let tasksToDelete = downloadManager.filteredTasks
+                    Task {
+                        await downloadManager.deleteTasks(tasksToDelete, withFiles: deleteFiles)
+                        selectedTaskIds.removeAll()
+                        isDeleteAllMode = false
+                    }
+                } else {
+                    deleteSelectedTasks(withFiles: deleteFiles)
+                }
                 showThoroughDeleteAlert = false
             },
             onCancel: {
+                isDeleteAllMode = false
                 showThoroughDeleteAlert = false
             }
             )
@@ -321,10 +329,10 @@ struct TaskListView: View {
         let isCommandPressed = NSEvent.modifierFlags.contains(.command)
         let isShiftPressed = NSEvent.modifierFlags.contains(.shift)
 
-        if isShiftPressed, let lastId = lastSelectedId, let lastIndex = filteredTasks.firstIndex(where: { $0.id == lastId }), let currentIndex = filteredTasks.firstIndex(where: { $0.id == task.id }) {
+        if isShiftPressed, let lastId = lastSelectedId, let lastIndex = downloadManager.filteredTasks.firstIndex(where: { $0.id == lastId }), let currentIndex = downloadManager.filteredTasks.firstIndex(where: { $0.id == task.id }) {
             // Range selection
             let range = min(lastIndex, currentIndex)...max(lastIndex, currentIndex)
-            let tasksInRange = filteredTasks[range]
+            let tasksInRange = downloadManager.filteredTasks[range]
             let idsInRange = tasksInRange.map { $0.id }
             selectedTaskIds.formUnion(idsInRange)
         } else if isCommandPressed {
@@ -339,6 +347,16 @@ struct TaskListView: View {
             // Single selection
             selectedTaskIds = [task.id]
             lastSelectedId = task.id
+        }
+    }
+
+    private var thoroughDeleteDisplayName: String {
+        if isDeleteAllMode {
+            return "当前列表中的所有任务"
+        } else if selectedTaskIds.count == 1 {
+            return downloadManager.filteredTasks.first(where: { $0.id == selectedTaskIds.first })?.name ?? "1 个任务"
+        } else {
+            return "\(selectedTaskIds.count) 个任务"
         }
     }
 
@@ -378,9 +396,7 @@ struct TaskListView: View {
         let tasksToDelete = downloadManager.tasks.filter { selectedTaskIds.contains($0.id) }
         
         Task {
-            for t in tasksToDelete {
-                await downloadManager.deleteTask(t, withFiles: withFiles)
-            }
+            await downloadManager.deleteTasks(tasksToDelete, withFiles: withFiles)
             // Clear selection after delete
             selectedTaskIds.removeAll()
             lastSelectedId = nil
@@ -474,8 +490,8 @@ struct TaskListHeader: View {
     let taskCount: Int
     @Binding var searchText: String
     @Binding var sortOrder: SortOrder
+    var onDeleteAll: () -> Void
 
-    @State private var showClearConfirmation = false
 
     var body: some View {
         ZStack {
@@ -527,10 +543,10 @@ struct TaskListHeader: View {
                     }
                 .frame(width: 200)
 
-                // Clear All button for completed tasks
-                if category == .completed && taskCount > 0 {
+                // Clear All / Delete All button
+                if taskCount > 0 {
                     Button {
-                        showClearConfirmation = true
+                        onDeleteAll()
                     } label: {
                         Image(systemName: "trash")
                             .font(.body.weight(.medium))
@@ -538,15 +554,7 @@ struct TaskListHeader: View {
                     }
                     .buttonStyle(.plain)
                     .frame(width: 24)
-                    .help("全部清除")
-                    .alert("确认清除所有已完成任务？", isPresented: $showClearConfirmation) {
-                        Button("取消", role: .cancel) {}
-                        Button("确认清除", role: .destructive) {
-                            Task { await downloadManager.clearAllStopped() }
-                        }
-                    } message: {
-                        Text("此操作将仅从列表中移除任务记录，不会删除您的本地文件。")
-                    }
+                    .help(category == .completed ? "全部清除" : "全部移除")
                 }
 
                 // Sort menu

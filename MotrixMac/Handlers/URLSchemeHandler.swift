@@ -68,18 +68,24 @@ class URLSchemeHandler {
     }
 
     private func openMainWindow() {
-        // Activate app
+        // 1. Activate app to bring to foreground
         NSApp.activate(ignoringOtherApps: true)
 
-        // Check if main window exists, if not create it
+        // 2. Try to find and focus existing window
         if let mainWindow = NSApp.windows.first(where: {
             $0.canBecomeMain && $0.identifier?.rawValue != "com_apple_SwiftUI_Settings_window"
         }) {
             mainWindow.makeKeyAndOrderFront(nil)
+            // Even if window exists, trigger a reset to home page
+            DispatchQueue.main.async {
+                DownloadManager.shared.shouldResetNavigation = true
+            }
         } else {
-            // Open main window using SwiftUI environment
-            // Post notification to open main window
-            NotificationCenter.default.post(name: .openMainWindow, object: nil)
+            // 3. No window exists, trigger SwiftUI via state
+            DispatchQueue.main.async {
+                DownloadManager.shared.shouldResetNavigation = true
+                DownloadManager.shared.shouldOpenMainWindow = true
+            }
         }
     }
 
@@ -112,8 +118,8 @@ class URLSchemeHandler {
     }
 
     private func addDownload(uri: String) {
-        // Show main window
-        NSApp.activate(ignoringOtherApps: true)
+        // Show main window and bring app to front
+        openMainWindow()
 
         // Add to download manager
         Task {

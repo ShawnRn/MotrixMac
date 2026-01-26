@@ -59,10 +59,12 @@ struct TaskItemView: View {
                         }
                     }
 
-                    // Size • Status • Speed
-                    Text(statusLineText)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                    // Row 2: Pre-calculated Status line (Scheme A)
+                    if !task.formattedStatusLine.isEmpty {
+                        Text(task.formattedStatusLine)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
 
@@ -118,42 +120,6 @@ struct TaskItemView: View {
         }
     }
 
-    private var statusLineText: String {
-        let size = sizeText
-        
-        if task.isActive {
-            let speed = task.downloadSpeed.formatted(.byteCount(style: .file)) + "/s"
-            if task.totalLength > 0 {
-                return "\(size) • \(speed) • \(task.eta)"
-            } else {
-                return "\(size) • \(speed)"
-            }
-        } else {
-            let status = switch task.status {
-                case "paused": "已暂停"
-                case "waiting": "等待中"
-                case "error": "错误"
-                case "complete": "已完成"
-                case "removed": "已移除"
-                default: task.status.capitalized
-            }
-            return "\(size) • \(status)"
-        }
-    }
-
-    private var sizeText: String {
-        if task.totalLength == 0 {
-            return task.completedLength == 0
-                ? "0 KB" : task.completedLength.formatted(.byteCount(style: .file))
-        }
-        let completed = task.completedLength.formatted(.byteCount(style: .file))
-        let total = task.totalLength.formatted(.byteCount(style: .file))
-        // For completed tasks, just show Total Size
-        if task.status == "complete" {
-            return total
-        }
-        return "\(completed) / \(total)"
-    }
 
     private var progressColor: Color {
         switch task.status {

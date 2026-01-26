@@ -2,62 +2,105 @@ import Observation
 import ServiceManagement
 import SwiftUI
 
-/// Preferences view integrated with macOS Settings scene
-struct PreferencesView: View {
-    @AppStorage("theme") private var theme = "auto"
+enum EmbeddedSettingsTab: String, Identifiable, CaseIterable {
+    case general, downloads, network, advanced
+    var id: String { self.rawValue }
+    
+    var title: String {
+        switch self {
+        case .general: return "通用"
+        case .downloads: return "下载"
+        case .network: return "网络"
+        case .advanced: return "高级"
+        }
+    }
+}
+
+struct LiquidSettingsPicker: View {
+    @Binding var selection: EmbeddedSettingsTab
+    @Namespace var namespace
     
     var body: some View {
-        TabView {
-            GeneralPreferencesTab()
-                .tabItem {
-                    Label("通用", systemImage: "gear")
+        HStack(spacing: 0) {
+            ForEach(EmbeddedSettingsTab.allCases) { tab in
+                Text(tab.title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(selection == tab ? .primary : .secondary)
+                    .padding(.horizontal, 18)
+                    .frame(height: 28) // Fixed height for selection box
+                    .background {
+                        if selection == tab {
+                            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                .fill(.secondary.opacity(0.18))
+                                .matchedGeometryEffect(id: "selector", in: namespace)
+                        }
+                    }
+                    .contentShape(RoundedRectangle(cornerRadius: 13))
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            selection = tab
+                        }
+                    }
+                
+                if tab != .advanced {
+                    Divider()
+                        .frame(height: 12)
+                        .opacity(0.12)
                 }
+            }
+        }
+        .padding(4) // Absolute uniform gap
+        .background {
+            // Concentric: Inner (13) + Padding (4) = 17
+            RoundedRectangle(cornerRadius: 17, style: .continuous)
+                .fill(.quaternary.opacity(0.05))
+        }
+        .fixedSize() // Prevent toolbar from stretching it
+    }
+}
+
+/// Standalone Preferences view for macOS Settings scene
+struct PreferencesView: View {
+    @AppStorage("theme") private var theme = "auto"
+    @State private var selectedTab: EmbeddedSettingsTab = .general
+    
+    var body: some View {
+        TabView(selection: $selectedTab) {
+            GeneralPreferencesTab()
+                .tabItem { Label("通用", systemImage: "gear") }
+                .tag(EmbeddedSettingsTab.general)
 
             DownloadsPreferencesTab()
-                .tabItem {
-                    Label("下载", systemImage: "arrow.down.circle")
-                }
+                .tabItem { Label("下载", systemImage: "arrow.down.circle") }
+                .tag(EmbeddedSettingsTab.downloads)
 
             NetworkPreferencesTab()
-                .tabItem {
-                    Label("网络", systemImage: "network")
-                }
+                .tabItem { Label("网络", systemImage: "network") }
+                .tag(EmbeddedSettingsTab.network)
 
             AdvancedPreferencesTab()
-                .tabItem {
-                    Label("高级", systemImage: "gearshape.2")
-                }
+                .tabItem { Label("高级", systemImage: "gearshape.2") }
+                .tag(EmbeddedSettingsTab.advanced)
         }
         .tabViewStyle(.automatic)
         .frame(width: 500, height: 400)
     }
 }
 
-/// Embedded preferences view for display in main content area
 struct EmbeddedPreferencesView: View {
-    @AppStorage("theme") private var theme = "auto"
+    @Binding var activeTab: EmbeddedSettingsTab
     
     var body: some View {
-        TabView {
-            GeneralPreferencesTab()
-                .tabItem {
-                    Label("通用", systemImage: "gear")
-                }
-
-            DownloadsPreferencesTab()
-                .tabItem {
-                    Label("下载", systemImage: "arrow.down.circle")
-                }
-
-            NetworkPreferencesTab()
-                .tabItem {
-                    Label("网络", systemImage: "network")
-                }
-
-            AdvancedPreferencesTab()
-                .tabItem {
-                    Label("高级", systemImage: "gearshape.2")
-                }
+        ZStack {
+            if activeTab == .general {
+                GeneralPreferencesTab()
+            } else if activeTab == .downloads {
+                DownloadsPreferencesTab()
+            } else if activeTab == .network {
+                NetworkPreferencesTab()
+            } else {
+                AdvancedPreferencesTab()
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -316,24 +359,6 @@ struct AdvancedPreferencesTab: View {
 
     // Fetching state
     @State private var isFetchingTrackers = false
-
-    init() {
-        let defaults = UserDefaults.standard
-        
-        let secret = defaults.string(forKey: "rpcSecret") ?? ""
-        let port = defaults.integer(forKey: "rpcPort") == 0 ? 12800 : defaults.integer(forKey: "rpcPort")
-        
-        _rpcPort = State(initialValue: port)
-        _rpcSecret = State(initialValue: secret)
-        _enableUpnp = State(initialValue: defaults.object(forKey: "enableUpnp") == nil ? true : defaults.bool(forKey: "enableUpnp"))
-        _enableDht = State(initialValue: defaults.object(forKey: "enableDht") == nil ? true : defaults.bool(forKey: "enableDht"))
-        _btPort = State(initialValue: defaults.integer(forKey: "btListenPort") == 0 ? 6881 : defaults.integer(forKey: "btListenPort"))
-        _autoSyncTracker = State(initialValue: defaults.object(forKey: "autoSyncTracker") == nil ? true : defaults.bool(forKey: "autoSyncTracker"))
-        _trackerSource = State(initialValue: defaults.string(forKey: "trackerSource") ?? "trackers_best.txt")
-        _userAgent = State(initialValue: defaults.string(forKey: "userAgent") ?? "MotrixMac/2.0")
-        _trackerListText = State(initialValue: defaults.string(forKey: "btTrackers") ?? "")
-        _updateInterval = State(initialValue: defaults.string(forKey: "trackerUpdateInterval") ?? "daily")
-    }
 
     var body: some View {
         Form {
@@ -642,8 +667,15 @@ struct AdvancedPreferencesTab: View {
         rpcPort = defaults.integer(forKey: "rpcPort")
         if rpcPort == 0 { rpcPort = 12800 }
         
-        // Secret usually stays stable
         rpcSecret = defaults.string(forKey: "rpcSecret") ?? ""
+        enableUpnp = defaults.object(forKey: "enableUpnp") == nil ? true : defaults.bool(forKey: "enableUpnp")
+        enableDht = defaults.object(forKey: "enableDht") == nil ? true : defaults.bool(forKey: "enableDht")
+        btPort = defaults.integer(forKey: "btListenPort") == 0 ? 6881 : defaults.integer(forKey: "btListenPort")
+        autoSyncTracker = defaults.object(forKey: "autoSyncTracker") == nil ? true : defaults.bool(forKey: "autoSyncTracker")
+        trackerSource = defaults.string(forKey: "trackerSource") ?? "trackers_best.txt"
+        userAgent = defaults.string(forKey: "userAgent") ?? "MotrixMac/2.0"
+        trackerListText = defaults.string(forKey: "btTrackers") ?? ""
+        updateInterval = defaults.string(forKey: "trackerUpdateInterval") ?? "daily"
     }
     
     private var isDirty: Bool {

@@ -4,7 +4,7 @@ import Observation
 import UserNotifications
 
 /// Central download manager using aria2 RPC
-@Observable
+@Observable @MainActor
 final class DownloadManager {
     static let shared = DownloadManager()
 
@@ -14,11 +14,28 @@ final class DownloadManager {
     var connectionError: String?
     var lastRpcError: String? = nil
     var needsRepair = false // Signals persistent engine issues
+    private var deletingGIDs: Set<String> = [] // Track tasks being deleted
 
     // UI state
     var showAddTaskSheet = false
     var showAddTorrentSheet = false
     var showAboutPanel = false
+    var shouldOpenMainWindow = false
+    var shouldResetNavigation = false
+
+    // UI Filtering & Search (Scheme B)
+    var searchText: String = "" { didSet { updateFilteredTasks() } }
+    var sortOrder: SortOrder = .dateAdded { didSet { updateFilteredTasks() } }
+    var currentCategory: TaskCategory = .downloading { didSet { updateFilteredTasks() } }
+    private(set) var filteredTasks: [DownloadTask] = []
+
+    // Static formatter to avoid recreation (Scheme A)
+    private static let byteCountFormatter: ByteCountFormatter = {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = .useAll
+        formatter.countStyle = .file
+        return formatter
+    }()
 
     // Deletion preferences
     var deleteWithFilesDefault: Bool {
@@ -146,9 +163,7 @@ final class DownloadManager {
                 }
                 startAutoRefresh()
                 Logger.info("DownloadManager: Successfully connected and authenticated on attempt \(i + 1)")
-                await MainActor.run {
-                    aria2Process?.state = .running
-                }
+                aria2Process?.state = .running
                 return
             } catch {
                 if i == 7 { // Last attempt
@@ -192,13 +207,18 @@ final class DownloadManager {
     }
 
     func disconnect() async {
-        refreshTask?.cancel()
-        refreshTask = nil
+        disconnectSync()
         
         await aria2Service?.disconnect()
         // Don't nil out aria2Service immediately if we want to keep it? 
         // Actually fine to keep simple.
         isConnected = false
+    }
+
+    /// Synchronous disconnect for app termination
+    func disconnectSync() {
+        refreshTask?.cancel()
+        refreshTask = nil
     }
 
     // MARK: - Task Management
@@ -225,8 +245,12 @@ final class DownloadManager {
                 }
             }
 
-            await MainActor.run {
-                self.tasks = newTasks.map { newTask in
+                self.tasks = newTasks.compactMap { newTask in
+                    // Skip tasks that are currently being deleted to prevent ghosting
+                    if self.deletingGIDs.contains(newTask.id) {
+                        return nil
+                    }
+                    
                     var task = newTask
                     
                     // 1. Restore from cache if available
@@ -249,10 +273,14 @@ final class DownloadManager {
                         // Update cache
                         self.speedHistoryCache[newTask.id] = history
                     }
+
+                    // 3. Pre-calculate strings for UI (Scheme A)
+                    self.precalculateUIStrings(for: &task)
                     
                     return task
                 }
                 
+                self.updateFilteredTasks()
                 self.saveSpeedHistory()
                 self.lastRpcError = nil
                 
@@ -260,7 +288,6 @@ final class DownloadManager {
                 let downloadingCount = self.taskCount(for: .downloading)
                 let completedCount = self.taskCount(for: .completed)
                 print("DownloadManager: UI State - Downloading: \(downloadingCount), Completed: \(completedCount)")
-            }
         } catch {
             if let rpcError = error as? Aria2Error {
                 if case .rpcError(let msg) = rpcError {
@@ -448,38 +475,50 @@ final class DownloadManager {
     }
 
     func deleteTask(_ task: DownloadTask, withFiles: Bool = false) async {
-        guard let service = aria2Service else { return }
+        await deleteTasks([task], withFiles: withFiles)
+    }
+
+    func deleteTasks(_ tasksToDelete: [DownloadTask], withFiles: Bool = false) async {
+        guard !tasksToDelete.isEmpty, let service = aria2Service else { return }
         
-        // Instant UI Removal: Remove from local list immediately
-        await MainActor.run {
-            if let index = self.tasks.firstIndex(where: { $0.id == task.id }) {
-                self.tasks.remove(at: index)
+        let idsToRemove = Set(tasksToDelete.map { $0.id })
+        
+        // 1. Mark as deleting and remove from UI
+        self.deletingGIDs.formUnion(idsToRemove)
+        self.tasks.removeAll { idsToRemove.contains($0.id) }
+        self.updateFilteredTasks()
+        
+        // 2. Engine Removal (Concurrent)
+        await withTaskGroup(of: Void.self) { group in
+            for task in tasksToDelete {
+                group.addTask {
+                    // Step A: Stop if active
+                    if ["active", "waiting", "paused"].contains(task.status) {
+                        try? await service.forceRemove(gid: task.id)
+                        // Give aria2 a moment to move the task to 'stopped' list 
+                        try? await Task.sleep(for: .milliseconds(200))
+                    }
+                    
+                    // Step B: Thoroughly remove from memory
+                    // We try twice to handle race conditions in aria2 transition
+                    if (try? await service.removeDownloadResult(gid: task.id)) == nil {
+                        try? await Task.sleep(for: .milliseconds(300))
+                        _ = try? await service.removeDownloadResult(gid: task.id)
+                    }
+
+                    if withFiles {
+                        await self.deleteFiles(for: task)
+                    }
+                }
             }
         }
         
-        do {
-            // Always try to remove from active/waiting/paused first
-            if ["active", "waiting", "paused"].contains(task.status) {
-                try? await service.remove(gid: task.id)
-            }
-            
-            // ALWAYS remove download result to ensure it's gone from UI
-            try await service.removeDownloadResult(gid: task.id)
-
-            if withFiles {
-                deleteFiles(for: task)
-            }
-
-            // We don't need to await refreshTasks() here because we already removed it locally.
-            // But doing it ensures consistency with the engine state eventually.
-            // We can spawn it detached or just let the auto-refresh catch it.
-            // For safety, let's call it but not wait on it for the UI update.
-            Task { await refreshTasks() }
-        } catch {
-            print("Failed to delete task: \(error)")
-            // If failed, we might want to add it back? But usually better to force sync.
-            await refreshTasks()
-        }
+        // 3. Cleanup: allow some breathing room before removing from blacklist
+        try? await Task.sleep(for: .milliseconds(500))
+        self.deletingGIDs.subtract(idsToRemove)
+        
+        // Final refresh
+        await refreshTasks()
     }
 
     func clearAllStopped() async {
@@ -638,6 +677,62 @@ final class DownloadManager {
         let request = UNNotificationRequest(
             identifier: UUID().uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
+    }
+
+    // MARK: - Performance Optimizations
+    
+    private func precalculateUIStrings(for task: inout DownloadTask) {
+        let formatter = Self.byteCountFormatter
+        
+        // 1. Size Text
+        let completed = formatter.string(fromByteCount: task.completedLength)
+        let total = formatter.string(fromByteCount: task.totalLength)
+        if task.status == "complete" {
+            task.formattedSizeText = total
+        } else {
+            task.formattedSizeText = "\(completed) / \(total)"
+        }
+        
+        // 2. Speed and ETA
+        if task.isActive {
+            task.formattedDownloadSpeed = formatter.string(fromByteCount: task.downloadSpeed) + "/s"
+            task.formattedETA = task.eta
+            
+            if task.totalLength > 0 {
+                task.formattedStatusLine = "\(task.formattedSizeText) · \(task.formattedDownloadSpeed) · 剩余时间: \(task.formattedETA)"
+            } else {
+                task.formattedStatusLine = "\(task.formattedSizeText) · \(task.formattedDownloadSpeed)"
+            }
+        } else {
+            task.formattedDownloadSpeed = ""
+            task.formattedETA = ""
+            task.formattedStatusText = task.displayStatus
+            task.formattedStatusLine = "\(task.formattedSizeText) · \(task.formattedStatusText)"
+        }
+    }
+
+    private func updateFilteredTasks() {
+        let categoryTasks = tasks.filter { task in
+            currentCategory.aria2Status.contains(task.status)
+        }
+
+        let sorted: [DownloadTask]
+        switch sortOrder {
+        case .dateAdded:
+            sorted = categoryTasks.sorted { $0.addedAt > $1.addedAt }
+        case .name:
+            sorted = categoryTasks.sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
+        case .size:
+            sorted = categoryTasks.sorted { $0.totalLength > $1.totalLength }
+        case .progress:
+            sorted = categoryTasks.sorted { $0.progress > $1.progress }
+        }
+
+        if searchText.isEmpty {
+            self.filteredTasks = sorted
+        } else {
+            self.filteredTasks = sorted.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+        }
     }
 }
 

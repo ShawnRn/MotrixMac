@@ -114,7 +114,7 @@ struct SidebarItem: View {
             .padding(.vertical, 8)
             .background {
                 if isSelected {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    Capsule()
                         .fill(Color.accentColor)
                 }
             }

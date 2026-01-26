@@ -14,8 +14,17 @@ struct MotrixMacApp: App {
     @AppStorage("language") private var language = "zh-CN"
     @Environment(\.openWindow) private var openWindow
 
+    init() {
+        // 1. Check for Native Messaging argument from browser
+        // We use a high-priority synchronous check. If this is a Nutive Messaging call, 
+        // the app performs its task and exits before ANY GUI code is executed.
+        if CommandLine.arguments.contains("--native-messaging") {
+            NativeMessagingManager.shared.runHeadlessLoop()
+        }
+    }
+
     var body: some Scene {
-        WindowGroup(id: "main") {
+        Window("MotrixMac", id: "main") {
             MainContentView()
                 .environment(downloadManager)
                 .environment(\.locale, .init(identifier: language))
@@ -27,9 +36,14 @@ struct MotrixMacApp: App {
                     URLSchemeHandler.shared.handle(url)
                 }
         }
-        .handlesExternalEvents(matching: ["*"])
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1024, height: 700)
+        .onChange(of: downloadManager.shouldOpenMainWindow) { _, newValue in
+            if newValue {
+                openWindow(id: "main")
+                downloadManager.shouldOpenMainWindow = false
+            }
+        }
         .commands {
             MotrixCommands(downloadManager: downloadManager)
         }
@@ -135,6 +149,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Start app logging
         Logger.info("MotrixMacApp: App launched")
         
+        // 0. Register Native Messaging manifests for browsers
+        NativeMessagingManager.shared.installManifests()
+        
         // Start aria2 engine
         let engine = EngineProcess()
         self.aria2Process = engine
@@ -230,6 +247,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false  // Keep running in menu bar
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            // No windows visible, trigger opening and navigation reset
+            DispatchQueue.main.async {
+                DownloadManager.shared.shouldResetNavigation = true
+                DownloadManager.shared.shouldOpenMainWindow = true
+            }
+            // Return false to prevent the system from opening an additional default window
+            return false
+        }
+        
+        // If windows exist, return true to let system focus them, 
+        // but still trigger a navigation reset for better UX
+        DispatchQueue.main.async {
+            DownloadManager.shared.shouldResetNavigation = true
+        }
+        return true
     }
 
     // URL handling moved to .onOpenURL in MotrixMacApp

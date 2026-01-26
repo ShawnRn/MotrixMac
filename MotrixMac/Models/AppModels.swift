@@ -26,6 +26,13 @@ struct DownloadTask: Identifiable, Equatable {
     var bitfield: String?
     var downloadSpeedHistory: [Int64] = []
 
+    // Pre-calculated strings for UI performance (Scheme A)
+    var formattedDownloadSpeed: String = ""
+    var formattedSizeText: String = ""
+    var formattedETA: String = ""
+    var formattedStatusText: String = ""
+    var formattedStatusLine: String = ""
+
     // Computed properties
     var progress: Double {
         guard totalLength > 0 else {
@@ -90,12 +97,12 @@ struct DownloadTask: Identifiable, Equatable {
         }
 
         switch status {
-        case "active": return "Downloading"
-        case "waiting": return "Waiting"
-        case "paused": return "Paused"
-        case "complete": return "Completed"
-        case "error": return "Error"
-        case "removed": return "Cancelled"
+        case "active": return "下载中"
+        case "waiting": return "等待中"
+        case "paused": return "已暂停"
+        case "complete": return "已完成"
+        case "error": return "出现错误"
+        case "removed": return "已取消"
         default: return status.capitalized
         }
     }

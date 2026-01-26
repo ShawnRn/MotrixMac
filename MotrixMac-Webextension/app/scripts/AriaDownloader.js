@@ -76,20 +76,50 @@ export default class AriaDownloader {
     const maskedSecret = result.motrixAPIkey ? `${result.motrixAPIkey.substring(0, 2)}...` : 'empty';
     console.log(`MotrixMac WebExtension: Connecting to RPC at 127.0.0.1:${result.motrixPort} with secret: ${maskedSecret}`);
     const aria2 = new Aria2(options);
-    try {
-      console.log(`MotrixMac WebExtension: [addDownloadToMotrixMac] Opening connection...`);
-      // Add connection timeout
-      const openPromise = aria2.open();
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Connection timeout')), 5000)
-      );
-      await Promise.race([openPromise, timeoutPromise]);
-    } catch (e) {
-      console.error('MotrixMac WebExtension: RPC connection failed:', e);
-      // Show notification on failure with specific details
-      this.showErrorNotification(`无法连接到 127.0.0.1:${result.motrixPort}。原因: ${e.message}`);
-      throw e;
+
+    // 0. ID Migration Guard: Alert user if secret is lost
+    if (!result.motrixAPIkey) {
+      console.error('MotrixMac WebExtension: RPC Secret is missing. ID migration likely reset storage.');
+      this.showErrorNotification('由于扩展 ID 已固定，设置已重置。请重新在插件设置中填入 RPC 密钥。');
+      return null;
     }
+
+    // 1. SILENT WAKE: Try Native Messaging first to avoid popups
+    try {
+      console.log('MotrixMac WebExtension: Attempting silent wake via Native Messaging...');
+      await browser.runtime.sendNativeMessage('com.shawnrain.motrixmac', { action: 'show' });
+      console.log('MotrixMac WebExtension: Native Messaging wake-up sent.');
+    } catch (e) {
+      console.warn('MotrixMac WebExtension: Native Messaging not available, falling back to URL Scheme / Polling:', e);
+      // If Native Messaging fails, we fall back to our robust polling logic
+
+      // Initial connection attempt (app might already be running)
+      try {
+        console.log(`MotrixMac WebExtension: [addDownloadToMotrixMac] Checking initial connectivity...`);
+        const openPromise = aria2.open();
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Initial connection timeout')), 1000)
+        );
+        await Promise.race([openPromise, timeoutPromise]);
+        console.log('MotrixMac WebExtension: App is already running.');
+      } catch (err) {
+        console.log('MotrixMac WebExtension: App not responsive. Attempting to launch via URL Scheme...');
+
+        // Launch the app and wait for it to wake up
+        const launchSuccess = await this.launchAppAndWait(downloadItem, result, options);
+        if (!launchSuccess) return null;
+      }
+    }
+
+    // 2. Ensure connection is open for Task Delivery
+    try {
+      await aria2.open();
+    } catch (err) {
+      console.error('MotrixMac WebExtension: Failed to connect for task delivery:', err);
+      return null;
+    }
+
+    // From here on, aria2 is connected. Proceed with sending task via RPC.
 
     let downloadUrl = '';
     if (validateUrl(downloadItem.finalUrl)) {
@@ -131,16 +161,6 @@ export default class AriaDownloader {
       if (result.enableNotifications) {
         this.showSuccessNotification();
       }
-
-      // Bring MotrixMac to front
-      browser.tabs.create({ url: 'motrixmac://show' }).then(tab => {
-        // Close the temporary tab immediately if possible, or just let it trigger the scheme
-        setTimeout(() => {
-          if (tab && tab.id) {
-            browser.tabs.remove(tab.id).catch(() => { });
-          }
-        }, 1000);
-      });
 
       return gid;
     } catch (err) {
@@ -276,5 +296,88 @@ export default class AriaDownloader {
         browser.tabs.create({ url: 'motrixmac://open' });
       }
     });
+  }
+
+  /**
+   * Launch MotrixMac and wait for RPC to become available.
+   * Uses motrixmac://show to wake the app.
+   */
+  async launchAppAndWait(downloadItem, options, aria2Options) {
+    // 1. Trigger App Launch
+    console.log('MotrixMac WebExtension: Using URL Scheme to launch app...');
+    try {
+      const tab = await browser.tabs.create({ url: 'motrixmac://show' });
+      // Keep tab open for 10 seconds to give user time to click "Allow/Open"
+      setTimeout(() => {
+        if (tab && tab.id) {
+          browser.tabs.remove(tab.id).catch(() => { });
+        }
+      }, 10000);
+    } catch (e) {
+      console.error('MotrixMac WebExtension: Failed to open URL Scheme:', e);
+      this.showErrorNotification('无法启动 MotrixMac，请检查应用是否已安装。');
+      return false;
+    }
+
+    // 2. Show user feedback
+    if (options.enableNotifications) {
+      this.showLaunchNotification();
+    }
+
+    // 3. Start Polling
+    console.log('MotrixMac WebExtension: Polling for RPC readiness...');
+    const maxAttempts = 30; // 30 seconds total
+    const pollAria2 = new Aria2(aria2Options);
+
+    for (let i = 0; i < maxAttempts; i++) {
+      try {
+        await pollAria2.open();
+        await pollAria2.call('getVersion'); // Verify connection works
+        console.log(`MotrixMac WebExtension: RPC is ready after ${i + 1}s`);
+        await pollAria2.close().catch(() => { });
+        return true;
+      } catch (e) {
+        // Not ready yet
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+
+    console.error('MotrixMac WebExtension: App failed to start/heartbeat within 30s');
+    this.showErrorNotification('MotrixMac 启动超时，请手动打开应用。');
+    return false;
+  }
+
+  /**
+   * Legacy method kept for safety or if we decide to add fallback back
+   */
+  async fallbackToUrlScheme(downloadItem, options) {
+    // ... preserved for now ...
+    return null;
+  }
+
+  async waitForRpc(aria2) {
+    const maxAttempts = 30;
+    for (let i = 0; i < maxAttempts; i++) {
+      try {
+        await aria2.open();
+        await aria2.call('getVersion');
+        console.log(`MotrixMac WebExtension: RPC is ready after ${i + 1}s`);
+        return true;
+      } catch (e) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+    return false;
+  }
+
+  showLaunchNotification() {
+    const notificationOptions = {
+      type: 'basic',
+      iconUrl: '../images/icon-large.png',
+      title: 'MotrixMac - 正在启动',
+      message: '正在启动 MotrixMac 并添加下载任务...',
+    };
+    const notificationId = Math.round(new Date().getTime() / 1000).toString();
+    browser.notifications.create(notificationId, notificationOptions);
   }
 }

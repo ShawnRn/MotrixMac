@@ -40,7 +40,8 @@ const Header = styled.h1`
 
 const Footer = styled.div`
   text-align: center;
-  margin-top: 40px;
+  margin-top: 32px;
+  padding-bottom: 48px;
   color: var(--text-secondary);
   font-size: 12px;
   opacity: 0.6;
@@ -249,7 +250,7 @@ const ConfigApp = () => {
           />
         </SettingsCard>
 
-        <Footer>MotrixMac Extension v1.0.0</Footer>
+        <Footer>MotrixMac Extension v1.0.1</Footer>
 
         <Snackbar
           open={feedback.open}
