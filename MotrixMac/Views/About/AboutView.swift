@@ -17,6 +17,12 @@ struct AboutView: View {
             type: "Core"
         ),
         LicenseItem(
+            name: "Sparkle",
+            license: "MIT",
+            description: "A software update framework for macOS.\nhttps://sparkle-project.org/\nOriginal creator Andy Matuschak, maintained by the Sparkle Project.",
+            type: "Framework"
+        ),
+        LicenseItem(
             name: "Motrix WebExtension",
             license: "GPL-3.0",
             description: "Browser extension for capturing downloads.\nhttps://github.com/gautamkrishnar/motrix-webextension",
