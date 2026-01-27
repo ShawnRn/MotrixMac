@@ -62,6 +62,7 @@ npm run build -- chrome
 - Inspired by [Motrix](https://github.com/agalwood/Motrix).
 - Powered by [aria2](https://aria2.github.io/).
 - WebExtension based on [motrix-webextension](https://github.com/gautamkrishnar/motrix-webextension).
+- Supported by [Sparkle](https://sparkle-project.org/), the standard software update framework for macOS.
 - Developed using [Antigravity](https://antigravity.google/), the powerful AI coding assistant by Google DeepMind.
 
 ## 📜 License
