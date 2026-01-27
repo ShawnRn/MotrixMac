@@ -1,14 +1,14 @@
-<?xml version="1.0" standalone="yes"?>
+<?xml version="1.0" encoding="utf-8"?>
 <rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
     <channel>
         <title>MotrixMac</title>
         <item>
             <title>1.0.7</title>
-            <pubDate>Tue, 27 Jan 2026 16:52:35 +0800</pubDate>
-            <sparkle:version>20260127.1</sparkle:version>
+            <pubDate>Tue, 27 Jan 2026 17:08:32 +0800</pubDate>
+            <sparkle:version>202601271</sparkle:version>
             <sparkle:shortVersionString>1.0.7</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>15.6</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/ShawnRn/MotrixMac/releases/download/v1.0.7/MotrixMac_1.0.7.dmg" length="7968330" type="application/octet-stream" sparkle:edSignature="sparkle:edSignature="L1zs6q35/RZaTazzGGhZYTU8vUbn4ua2AFcnIKj173EGfg6bLazHNdDGoPtAS1O/xEiJc0r7zlH3a8Ci3yzKCA==" length="7968330""/>
+            <enclosure url="https://github.com/ShawnRn/MotrixMac/releases/download/v1.0.7/MotrixMac_1.0.7.dmg" type="application/octet-stream" sparkle:edSignature="L1zs6q35/RZaTazzGGhZYTU8vUbn4ua2AFcnIKj173EGfg6bLazHNdDGoPtAS1O/xEiJc0r7zlH3a8Ci3yzKCA==" length="7968330"/>
         </item>
     </channel>
 </rss>
