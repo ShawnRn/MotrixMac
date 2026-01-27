@@ -1,0 +1,14 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>MotrixMac</title>
+        <item>
+            <title>1.0.6</title>
+            <pubDate>Tue, 27 Jan 2026 09:15:45 +0800</pubDate>
+            <sparkle:version>20260126</sparkle:version>
+            <sparkle:shortVersionString>1.0.6</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.6</sparkle:minimumSystemVersion>
+            <enclosure url="https://raw.githubusercontent.com/shawnrain/MotrixMac/master/MotrixMac%201.0.6.dmg" length="7932174" type="application/octet-stream" sparkle:edSignature="9V2IdnQYNCY+OldY+zaMlX1btccKUMDn0aORM+mxPvVROVJ2jABaK8tZsdznmmywocXMUk7LAqGrxF4ewFV/Cw=="/>
+        </item>
+    </channel>
+</rss>
