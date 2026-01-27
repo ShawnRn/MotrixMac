@@ -37,6 +37,24 @@ struct AboutView: View {
     ]
     @State private var changelogs: [ChangelogItem] = [
         ChangelogItem(
+            version: "1.0.8",
+            date: "2026-01-27",
+            changes: [
+                "支持 Quick Look 方向键切换预览。",
+                "详细信息侧边栏新增图片文件缩略图。",
+                "修复了点击 Dock 图标意外重置回主页的问题。",
+                "修复了一些 bugs，提升了稳定性。"
+            ]
+        ),
+        ChangelogItem(
+            version: "1.0.7",
+            date: "2026-01-27",
+            changes: [
+                "新增图片缩略图预览功能。",
+                "集成原生 Quick Look 支持，现在可以在「已完成」列表中空格预览。"
+            ]
+        ),
+        ChangelogItem(
             version: "1.0.6",
             date: "2026-01-27",
             changes: [

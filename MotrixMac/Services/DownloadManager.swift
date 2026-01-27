@@ -15,6 +15,7 @@ final class DownloadManager {
     var lastRpcError: String? = nil
     var needsRepair = false // Signals persistent engine issues
     private var deletingGIDs: Set<String> = [] // Track tasks being deleted
+    private var persistentTasks: [String: DownloadTask] = [:] // Local storage for completed tasks
 
     // UI state
     var showAddTaskSheet = false
@@ -72,9 +73,41 @@ final class DownloadManager {
     private init() {
         requestNotificationPermission()
         loadSpeedHistory()
+        loadPersistentTasks()
     }
     
     // MARK: - Persistence
+    
+    private func getPersistentTasksPath() -> URL? {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        let motrixDir = appSupport?.appendingPathComponent("MotrixMac")
+        return motrixDir?.appendingPathComponent("tasks.json")
+    }
+
+    private func loadPersistentTasks() {
+        guard let path = getPersistentTasksPath(),
+              FileManager.default.fileExists(atPath: path.path) else { return }
+        
+        do {
+            let data = try Data(contentsOf: path)
+            let tasks = try JSONDecoder().decode([String: DownloadTask].self, from: data)
+            self.persistentTasks = tasks
+            print("DownloadManager: Loaded \(tasks.count) persistent tasks")
+        } catch {
+            print("DownloadManager: Failed to load persistent tasks: \(error)")
+        }
+    }
+
+    private func savePersistentTasks() {
+        guard let path = getPersistentTasksPath() else { return }
+        
+        do {
+            let data = try JSONEncoder().encode(persistentTasks)
+            try data.write(to: path)
+        } catch {
+            print("DownloadManager: Failed to save persistent tasks: \(error)")
+        }
+    }
     
     private func loadSpeedHistory() {
         if let data = UserDefaults.standard.data(forKey: "speedHistoryCache"),
@@ -253,7 +286,7 @@ final class DownloadManager {
                     
                     var task = newTask
                     
-                    // 1. Restore from cache if available
+                    // 1. Restore speed history from cache if available
                     if let cachedHistory = self.speedHistoryCache[newTask.id] {
                         task.downloadSpeedHistory = cachedHistory
                     }
@@ -274,10 +307,31 @@ final class DownloadManager {
                         self.speedHistoryCache[newTask.id] = history
                     }
 
-                    // 3. Pre-calculate strings for UI (Scheme A)
+                    // 3. Persistent Storage logic:
+                    // If task is complete, ensure it is in persistentTasks
+                    if task.status == "complete" {
+                        if self.persistentTasks[task.id] == nil {
+                            self.persistentTasks[task.id] = task
+                            print("DownloadManager: Task \(task.name) persisted to local storage")
+                            self.savePersistentTasks()
+                        }
+                    }
+
+                    // 4. Pre-calculate strings for UI (Scheme A)
                     self.precalculateUIStrings(for: &task)
                     
                     return task
+                }
+                
+                // 5. Merge persistent tasks that are not in the current engine list
+                // This handles cases where aria2 session drops completed tasks
+                let engineGIDs = Set(newTasks.map { $0.id })
+                for (gid, task) in self.persistentTasks {
+                    if !engineGIDs.contains(gid) && !self.deletingGIDs.contains(gid) {
+                        var pTask = task
+                        self.precalculateUIStrings(for: &pTask)
+                        self.tasks.append(pTask)
+                    }
                 }
                 
                 self.updateFilteredTasks()
@@ -486,6 +540,13 @@ final class DownloadManager {
         // 1. Mark as deleting and remove from UI
         self.deletingGIDs.formUnion(idsToRemove)
         self.tasks.removeAll { idsToRemove.contains($0.id) }
+        
+        // Remove from persistent storage too
+        for id in idsToRemove {
+            self.persistentTasks.removeValue(forKey: id)
+        }
+        self.savePersistentTasks()
+        
         self.updateFilteredTasks()
         
         // 2. Engine Removal (Concurrent)
@@ -517,6 +578,9 @@ final class DownloadManager {
         try? await Task.sleep(for: .milliseconds(500))
         self.deletingGIDs.subtract(idsToRemove)
         
+        // 4. Force aria2 to save session to disk immediately to prevent ghosting on reboot
+        try? await service.saveSession()
+        
         // Final refresh
         await refreshTasks()
     }
@@ -529,10 +593,13 @@ final class DownloadManager {
         for task in stoppedTasks {
             do {
                 try await service.removeDownloadResult(gid: task.id)
+                self.persistentTasks.removeValue(forKey: task.id)
             } catch {
                 print("Failed to remove stopped task result: \(error)")
             }
         }
+        self.savePersistentTasks()
+        try? await service.saveSession()
         await refreshTasks()
     }
 

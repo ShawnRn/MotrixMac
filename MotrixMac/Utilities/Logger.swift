@@ -39,6 +39,8 @@ final class Logger: ObservableObject {
     @Published var level: LogLevel {
         didSet {
             UserDefaults.standard.set(level.rawValue, forKey: "LogLevel")
+            // 同步设置 Sparkle 的日志级别 (0: 错误, 1: 详细)
+            UserDefaults.standard.set(level == .debug ? 1 : 0, forKey: "SULogLevel")
         }
     }
     
@@ -68,6 +70,9 @@ final class Logger: ObservableObject {
             
             self.fileHandle = try? FileHandle(forWritingTo: fileUrl)
             self.fileHandle?.seekToEndOfFile()
+            
+            // 确保启动时 Sparkle 日志级别正确
+            UserDefaults.standard.set(self.level == .debug ? 1 : 0, forKey: "SULogLevel")
         } else {
             self.logFileURL = nil
             self.fileHandle = nil

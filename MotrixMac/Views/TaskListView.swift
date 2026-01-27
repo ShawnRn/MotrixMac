@@ -1,5 +1,6 @@
 import Observation
 import SwiftUI
+import Quartz
 
 /// List view displaying download tasks with Liquid Glass cards
 struct TaskListView: View {
@@ -18,11 +19,19 @@ struct TaskListView: View {
     @State private var dragStart: CGPoint?
     @State private var dragCurrent: CGPoint?
     @State private var itemFrames: [String: CGRect] = [:]
+    @State private var itemWindowFrames: [String: CGRect] = [:] // 追踪相对于窗口内容区域的坐标
+    @State private var itemImages: [String: NSImage] = [:] // 缓存缩略图用于动画
     @State private var initialSelectionBeforeDrag: Set<String> = []
+    
+    // Keyboard Event Monitoring for Navigation (especially during QuickLook)
+    @State private var keyMonitor: Any?
     
     // Manual double-click tracking
     @State private var lastClickTime: Date = .distantPast
     @State private var lastClickId: String? = nil
+    
+    // Quick Look Preview State
+    @State private var previewURL: URL?
 
 
     var body: some View {
@@ -69,9 +78,19 @@ struct TaskListView: View {
         }
         .onAppear {
             downloadManager.currentCategory = category
+            setupKeyMonitor()
+        }
+        .onDisappear {
+            removeKeyMonitor()
         }
         .onChange(of: category) { _, newValue in
             downloadManager.currentCategory = newValue
+        }
+        .onChange(of: selectedTaskIds) { _, newIds in
+            // When selection changes, if QuickLook is open, update the preview content
+            if QLPreviewPanel.shared()?.isVisible == true {
+                handleQuickLook(autoUpdate: true)
+            }
         }
     }
 
@@ -80,7 +99,7 @@ struct TaskListView: View {
         VStack(spacing: 12) {
             ProgressView()
                 .controlSize(.regular)
-            Text("Starting download engine...")
+            Text("正在启动下载引擎...")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -167,6 +186,18 @@ struct TaskListView: View {
             TaskItemView(
                 task: task,
                 isSelected: isSelected,
+                onThumbnailFrameChanged: { frame in
+                    itemWindowFrames[task.id] = frame
+                    if let filePath = task.files.first?.path, !filePath.isEmpty {
+                        QuickLookManager.shared.setCache(for: URL(fileURLWithPath: filePath), frame: frame, image: nil)
+                    }
+                },
+                onThumbnailImageChanged: { image in
+                    itemImages[task.id] = image
+                    if let filePath = task.files.first?.path, !filePath.isEmpty {
+                        QuickLookManager.shared.setCache(for: URL(fileURLWithPath: filePath), frame: itemWindowFrames[task.id] ?? .zero, image: image)
+                    }
+                },
                 onShowInfo: {
                     selectedTaskIds = [task.id]
                     withAnimation(.spring(duration: 0.25)) {
@@ -174,7 +205,6 @@ struct TaskListView: View {
                     }
                 }
             )
-            // Single background with ZStack for selection highlight + frame reporter
             .background(
                 ZStack {
                     // Selection highlight
@@ -183,11 +213,10 @@ struct TaskListView: View {
                             .fill(Color.accentColor.opacity(0.1))
                     }
                     
-                    // Frame reporter (invisible, but captures geometry)
+                    // Frame reporter (invisible, but captures geometry for marquee selection)
                     GeometryReader { proxy in
                         Color.clear
                             .onAppear {
-                                // Force initial frame report
                                 itemFrames[task.id] = proxy.frame(in: .named("TaskListSpace"))
                             }
                             .preference(
@@ -199,7 +228,7 @@ struct TaskListView: View {
             )
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(TaskItemButtonStyle())
         // Double-click: open/pause/resume (using simultaneousGesture to not block single-click)
         .simultaneousGesture(
             TapGesture(count: 2).onEnded {
@@ -291,6 +320,26 @@ struct TaskListView: View {
              }
         }
         .keyboardShortcut(.delete, modifiers: [.command, .option])
+        .hidden()
+        
+        // Quick Look (Space)
+        Button("") {
+            handleQuickLook()
+        }
+        .keyboardShortcut(.space, modifiers: [])
+        .hidden()
+        
+        // Navigation (Up/Down Arrows)
+        Button("") {
+            moveSelection(direction: -1)
+        }
+        .keyboardShortcut(.upArrow, modifiers: [])
+        .hidden()
+        
+        Button("") {
+            moveSelection(direction: 1)
+        }
+        .keyboardShortcut(.downArrow, modifiers: [])
         .hidden()
     }
 
@@ -402,23 +451,186 @@ struct TaskListView: View {
             lastSelectedId = nil
         }
     }
+
+    private func handleQuickLook(autoUpdate: Bool = false) {
+        // Find the first selected task that has a valid file path and is completed
+        guard let firstId = selectedTaskIds.first,
+              let task = downloadManager.filteredTasks.first(where: { $0.id == firstId }),
+              task.status == "complete",
+              let filePath = task.files.first?.path,
+              !filePath.isEmpty else {
+            // If panel is open and we have no valid selection, maybe close? 
+            // For now, keep it open but show nil if needed.
+            return
+        }
+        
+        let url = URL(fileURLWithPath: filePath)
+        
+        // 使用原生 QLPreviewPanel 实现带动画的展示
+        if let panel = QLPreviewPanel.shared() {
+            QuickLookManager.shared.updateSourceWindow(NSApp.keyWindow)
+            QuickLookManager.shared.currentURL = url
+            QuickLookManager.shared.setCache(for: url, frame: itemWindowFrames[firstId] ?? .zero, image: itemImages[firstId])
+            
+            panel.dataSource = QuickLookManager.shared
+            panel.delegate = QuickLookManager.shared
+            
+            if !autoUpdate {
+                panel.makeKeyAndOrderFront(nil as Any?)
+            } else {
+                panel.reloadData()
+            }
+        }
+    }
+
+    // MARK: - Keyboard Monitor
+    
+    private func setupKeyMonitor() {
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            // Handle arrow keys only if the window is active and we are not typing in a text field
+            guard NSApp.keyWindow != nil else { return event }
+            
+            // Avoid intercepting if focus is in a Search field or TextField
+            if let firstResponder = NSApp.keyWindow?.firstResponder,
+               firstResponder is NSTextView || firstResponder is NSTextField {
+                return event
+            }
+
+            switch event.keyCode {
+            case 125: // Down Arrow
+                moveSelection(direction: 1)
+                return nil // Consume event
+            case 126: // Up Arrow
+                moveSelection(direction: -1)
+                return nil // Consume event
+            default:
+                return event
+            }
+        }
+    }
+    
+    private func removeKeyMonitor() {
+        if let monitor = keyMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyMonitor = nil
+        }
+    }
+
+    private func moveSelection(direction: Int) {
+        let tasks = downloadManager.filteredTasks
+        guard !tasks.isEmpty else { return }
+        
+        let currentIndex: Int
+        if let lastId = lastSelectedId, let index = tasks.firstIndex(where: { $0.id == lastId }) {
+            currentIndex = index
+        } else {
+            currentIndex = direction > 0 ? -1 : tasks.count
+        }
+        
+        let nextIndex = currentIndex + direction
+        if nextIndex >= 0 && nextIndex < tasks.count {
+            let nextTask = tasks[nextIndex]
+            selectedTaskIds = [nextTask.id]
+            lastSelectedId = nextTask.id
+        }
+    }
+}
+
+// MARK: - Quick Look 原生管理类
+
+class QuickLookManager: NSObject, QLPreviewPanelDataSource, QLPreviewPanelDelegate {
+    static let shared = QuickLookManager()
+    
+    // 缓存字典：根据 URL 存储坐标和图像
+    private var frameCache: [URL: CGRect] = [:]
+    private var imageCache: [URL: NSImage] = [:]
+    
+    var currentURL: URL?
+    private(set) var sourceWindow: NSWindow? // 锁定主窗口引用
+    
+    func setCache(for url: URL, frame: CGRect, image: NSImage?) {
+        // 过滤掉全零坐标，防止动画飞向左下角
+        if frame != .zero {
+            frameCache[url] = frame
+        }
+        if let image = image {
+            imageCache[url] = image
+        }
+    }
+    
+    /// 获取已缓存的图像，用于侧边栏零延迟加载
+    func getCachedImage(for url: URL) -> NSImage? {
+        return imageCache[url]
+    }
+    
+    /// 当确定是主窗口活动时更新窗口引用
+    func updateSourceWindow(_ window: NSWindow?) {
+        guard let window = window, !(window is QLPreviewPanel) else { return }
+        self.sourceWindow = window
+    }
+    
+    func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
+        return currentURL != nil ? 1 : 0
+    }
+    
+    func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem! {
+        return currentURL as (QLPreviewItem)?
+    }
+    
+    func previewPanel(_ panel: QLPreviewPanel!, sourceFrameOnScreenFor item: QLPreviewItem!) -> NSRect {
+        guard let url = item as? URL,
+              let itemFrame = frameCache[url],
+              let window = sourceWindow else { return .zero }
+        
+        // 翻转坐标系：SwiftUI (Top-left) -> AppKit (Bottom-left) 
+        // 必须使用锁定后的主窗口高度，否则当 QL 面板在前时 window.frame.height 是错的
+        let windowHeight = window.frame.height
+        let appKitY = windowHeight - itemFrame.origin.y - itemFrame.size.height
+        
+        // 构建相对于窗口基准的 Rect
+        let rectInWindow = NSRect(x: itemFrame.origin.x, y: appKitY, width: itemFrame.size.width, height: itemFrame.size.height)
+        
+        // 转换为屏幕坐标
+        return window.convertToScreen(rectInWindow)
+    }
+    
+    func previewPanel(_ panel: QLPreviewPanel!, transitionImageFor item: QLPreviewItem!, contentRect: UnsafeMutablePointer<NSRect>!) -> Any! {
+        guard let url = item as? URL, let image = imageCache[url] else { return nil }
+        
+        // 创建带圆角且保持 Aspect Fill (居中裁剪) 的过渡图像
+        // 这样可以确保动画收尾图与渲染出的缩略图视觉完全一致，消除比例压缩感
+        let targetSize = NSSize(width: 44, height: 44)
+        let roundedImage = NSImage(size: targetSize, flipped: false) { rect in
+            let path = NSBezierPath(roundedRect: rect, xRadius: 10, yRadius: 10)
+            path.addClip()
+            
+            // 计算如何执行 Aspect Fill 居中裁剪
+            let originalSize = image.size
+            let aspectWidth = targetSize.width / originalSize.width
+            let aspectHeight = targetSize.height / originalSize.height
+            let maxAspect = max(aspectWidth, aspectHeight)
+            
+            let drawWidth = originalSize.width * maxAspect
+            let drawHeight = originalSize.height * maxAspect
+            let drawX = (targetSize.width - drawWidth) / 2
+            let drawY = (targetSize.height - drawHeight) / 2
+            
+            image.draw(in: NSRect(x: drawX, y: drawY, width: drawWidth, height: drawHeight),
+                       from: .zero,
+                       operation: .sourceOver,
+                       fraction: 1.0)
+            return true
+        }
+        return roundedImage
+    }
 }
 
 // MARK: - Helper Components for Selection
 
 struct TaskItemButtonStyle: ButtonStyle {
-    let isSelected: Bool
-    
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .background {
-                if configuration.isPressed {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.accentColor.opacity(0.1))
-                }
-            }
             .contentShape(Rectangle())
-            .animation(.none, value: configuration.isPressed)
     }
 }
 

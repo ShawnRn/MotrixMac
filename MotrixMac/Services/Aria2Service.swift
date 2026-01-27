@@ -308,6 +308,10 @@ actor Aria2Service {
         _ = try await call(method: method)
     }
 
+    func saveSession() async throws {
+        _ = try await call(method: "aria2.saveSession")
+    }
+
     // MARK: - Parsing
 
     private func parseTask(from dict: [String: Any]) -> DownloadTask {

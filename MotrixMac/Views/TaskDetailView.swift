@@ -6,13 +6,14 @@ import SwiftUI
 struct TaskDetailView: View {
     @Environment(DownloadManager.self) private var downloadManager
     let task: DownloadTask
+    let initialThumbnail: NSImage?
 
     @State private var selectedTab: DetailTab = .general
 
     var body: some View {
         VStack(spacing: 0) {
             // Header with file info
-            TaskDetailHeader(task: task)
+            TaskDetailHeader(task: task, initialThumbnail: initialThumbnail)
                 .padding(.top, 60)
                 .padding(.horizontal, 24)
                 .padding(.bottom, 24)
@@ -55,12 +56,20 @@ struct TaskDetailView: View {
 struct TaskDetailHeader: View {
     @Environment(DownloadManager.self) private var downloadManager
     let task: DownloadTask
+    let initialThumbnail: NSImage?
 
     var body: some View {
         HStack(spacing: 20) {
-            // Large file icon
-            FileIconView(fileType: task.fileType)
-                .frame(width: 72, height: 72)
+            // Large file icon/thumbnail container
+            ZStack {
+                if task.fileType == .image {
+                    TaskThumbnailView(task: task, size: 72, initialImage: initialThumbnail)
+                } else {
+                    FileIconView(fileType: task.fileType)
+                        .frame(width: 72, height: 72)
+                }
+            }
+            .frame(width: 72, height: 72)
 
             VStack(alignment: .leading, spacing: 8) {
                 Text(task.name)
@@ -499,7 +508,10 @@ struct TrackerRow: View {
 }
 
 #Preview {
-    TaskDetailView(task: .preview)
+    TaskDetailView(task: .preview, initialThumbnail: nil)
         .environment(DownloadManager.shared)
         .frame(width: 500, height: 700)
 }
+
+// MARK: - Piece Progress View (Helper)
+// Use the implementation in Views/Components/PieceProgressView.swift

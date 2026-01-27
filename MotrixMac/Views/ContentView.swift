@@ -49,7 +49,6 @@ struct MainContentView: View {
 
                         // Overlay Layer: Dismiss Barrier & Detail View
                         if isInspectorPresented,
-                            !selectedTaskIds.isEmpty,
                             let taskId = selectedTaskIds.first,
                             let task = downloadManager.tasks.first(where: { $0.id == taskId })
                         {
@@ -59,9 +58,16 @@ struct MainContentView: View {
                                         selectedTaskIds.removeAll()
                                     }
                                 }
+                                .zIndex(0)
                             
+                            // 整体详情面板容器
                             ZStack(alignment: .topLeading) {
-                                TaskDetailView(task: task)
+                                // 尝试获取缓存的缩略图以实现零延迟“焊死”效果
+                                let cachedImage = task.files.first?.path.isEmpty == false 
+                                    ? QuickLookManager.shared.getCachedImage(for: URL(fileURLWithPath: task.files.first!.path)) 
+                                    : nil
+                                    
+                                TaskDetailView(task: task, initialThumbnail: cachedImage)
                                     .frame(width: 400)
                                     .frame(maxHeight: .infinity)
                                     .background(.ultraThinMaterial)
@@ -87,6 +93,7 @@ struct MainContentView: View {
                                 .padding(.top, 8)
                                 .padding(.leading, 12)
                             }
+                            .compositingGroup() // 关键：强制平展为位图后再应用过渡，消除层级分离感
                             .transition(.move(edge: .trailing))
                             .zIndex(1)
                         }

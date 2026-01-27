@@ -276,20 +276,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag {
-            // No windows visible, trigger opening and navigation reset
+            // No windows visible, trigger opening and navigation reset to Home
             DispatchQueue.main.async {
                 DownloadManager.shared.shouldResetNavigation = true
                 DownloadManager.shared.shouldOpenMainWindow = true
             }
-            // Return false to prevent the system from opening an additional default window
             return false
         }
         
-        // If windows exist, return true to let system focus them, 
-        // but still trigger a navigation reset for better UX
-        DispatchQueue.main.async {
-            DownloadManager.shared.shouldResetNavigation = true
-        }
+        // If windows exist (even if covered/minimized), DO NOT reset navigation.
+        // Just return true to let system focus the window, keeping user context.
         return true
     }
 

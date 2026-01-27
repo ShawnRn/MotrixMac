@@ -12,6 +12,8 @@ struct TaskItemView: View {
     @Environment(DownloadManager.self) private var downloadManager
     let task: DownloadTask
     let isSelected: Bool
+    var onThumbnailFrameChanged: (CGRect) -> Void = { _ in }
+    var onThumbnailImageChanged: (NSImage) -> Void = { _ in }
     var onShowInfo: () -> Void = {}
 
     @State private var isHovering = false
@@ -30,9 +32,38 @@ struct TaskItemView: View {
                 .frame(height: 44)
                 .padding(.leading, -8) // Pull it slightly left
 
-            // File type icon
-            FileIconView(fileType: task.fileType)
-                .frame(width: 44, height: 44)
+            // File type icon/thumbnail
+            ZStack {
+                if task.fileType == .image {
+                    TaskThumbnailView(task: task, size: 44, onImageLoaded: { image in
+                        onThumbnailImageChanged(image)
+                    })
+                } else {
+                    FileIconView(fileType: task.fileType)
+                        .frame(width: 44, height: 44)
+                        .onAppear {
+                            // 使用 ImageRenderer 获取包含背景颜色的完整图标快照
+                            let iconView = FileIconView(fileType: task.fileType)
+                                .frame(width: 44, height: 44)
+                            let renderer = ImageRenderer(content: iconView)
+                            renderer.scale = 2.0 // 适配 Retina 屏幕
+                            if let image = renderer.nsImage {
+                                onThumbnailImageChanged(image)
+                            }
+                        }
+                }
+            }
+            .background(
+                GeometryReader { proxy in
+                    Color.clear
+                        .onChange(of: proxy.frame(in: .global)) { _, newFrame in
+                            onThumbnailFrameChanged(newFrame)
+                        }
+                        .onAppear {
+                            onThumbnailFrameChanged(proxy.frame(in: .global))
+                        }
+                }
+            )
 
             // Task info (Top & Bottom)
             VStack(alignment: .leading, spacing: 6) {

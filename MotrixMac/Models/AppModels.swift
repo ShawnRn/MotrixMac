@@ -4,7 +4,7 @@ import SwiftUI
 /// Core models for the MotrixMac application
 
 /// Represents a download task from aria2
-struct DownloadTask: Identifiable, Equatable {
+struct DownloadTask: Identifiable, Equatable, Codable {
     let id: String  // GID from aria2
     var name: String
     var uri: String
@@ -27,11 +27,19 @@ struct DownloadTask: Identifiable, Equatable {
     var downloadSpeedHistory: [Int64] = []
 
     // Pre-calculated strings for UI performance (Scheme A)
+    // Excluded from Codable via CodingKeys
     var formattedDownloadSpeed: String = ""
     var formattedSizeText: String = ""
     var formattedETA: String = ""
     var formattedStatusText: String = ""
     var formattedStatusLine: String = ""
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, uri, dir, status, totalLength, completedLength
+        case downloadSpeed, uploadSpeed, connections, numSeeders, numPieces
+        case infoHash, files, peers, trackers, addedAt, errorMessage, bitfield
+        case downloadSpeedHistory
+    }
 
     // Computed properties
     var progress: Double {
@@ -109,7 +117,7 @@ struct DownloadTask: Identifiable, Equatable {
 }
 
 /// File within a download task
-struct TaskFile: Equatable {
+struct TaskFile: Equatable, Codable {
     let index: Int
     let path: String
     let length: Int64
@@ -119,7 +127,7 @@ struct TaskFile: Equatable {
 }
 
 /// Peer connected to a torrent
-struct TaskPeer: Equatable {
+struct TaskPeer: Equatable, Codable {
     let ip: String
     let port: Int
     let client: String
@@ -129,7 +137,7 @@ struct TaskPeer: Equatable {
 }
 
 /// Tracker for a torrent
-struct TaskTracker: Equatable {
+struct TaskTracker: Equatable, Codable {
     let url: String
     let status: String
     let message: String?
