@@ -1,4 +1,5 @@
 import SwiftUI
+import Sparkle
 
 
 struct AboutView: View {
@@ -29,6 +30,14 @@ struct AboutView: View {
         )
     ]
     @State private var changelogs: [ChangelogItem] = [
+        ChangelogItem(
+            version: "1.0.6",
+            date: "2026-01-27",
+            changes: [
+                "新增了自动更新功能。",
+                "补全了部分界面的本地化。"
+            ]
+        ),
         ChangelogItem(
             version: "1.0.5",
             date: "2026-01-26",
@@ -152,10 +161,31 @@ struct AboutView: View {
                         ChangelogView(changelogs: changelogs)
                             .frame(width: 600, height: 500)
                     }
+
                 }
             }
             
             Spacer()
+            
+            // Update Button at bottom
+            Button {
+                AppDelegate.shared?.updaterController.checkForUpdates(nil)
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.up.circle.fill")
+                    Text("检查更新")
+                }
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.blue)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(
+                    Capsule()
+                        .fill(Color.blue.opacity(0.1))
+                )
+            }
+            .buttonStyle(.plain)
+            .padding(.bottom, 20)
             
             // Footer
             VStack(spacing: 6) {

@@ -35,5 +35,11 @@
 	</array>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.utilities</string>
+	<key>SUFeedURL</key>
+	<string>https://raw.githubusercontent.com/ShawnRn/MotrixMac/main/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>bjptNX8PlJbdwtszqi3/BAHV4TYyZ3UuV1EMANJ+GaY=</string>
+	<key>SUEnableInstallerLauncherService</key>
+	<true/>
 </dict>
 </plist>

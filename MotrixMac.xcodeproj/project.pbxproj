@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		46533E692F21BA1F007F2C3E /* Starscream in Frameworks */ = {isa = PBXBuildFile; productRef = 46533E682F21BA1F007F2C3E /* Starscream */; };
+		46C051B72F2841AF00440FFE /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 46C051B62F2841AF00440FFE /* Sparkle */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -41,6 +42,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				46533E692F21BA1F007F2C3E /* Starscream in Frameworks */,
+				46C051B72F2841AF00440FFE /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -85,6 +87,7 @@
 			name = MotrixMac;
 			packageProductDependencies = (
 				46533E682F21BA1F007F2C3E /* Starscream */,
+				46C051B62F2841AF00440FFE /* Sparkle */,
 			);
 			productName = MotrixMac;
 			productReference = 46AC071B2F21B85C0079AAD2 /* MotrixMac.app */;
@@ -116,6 +119,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				46533E672F21BA1F007F2C3E /* XCRemoteSwiftPackageReference "Starscream" */,
+				46C051B52F2841AF00440FFE /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 46AC071C2F21B85C0079AAD2 /* Products */;
@@ -366,6 +370,14 @@
 				minimumVersion = 4.0.8;
 			};
 		};
+		46C051B52F2841AF00440FFE /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.8.1;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -373,6 +385,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 46533E672F21BA1F007F2C3E /* XCRemoteSwiftPackageReference "Starscream" */;
 			productName = Starscream;
+		};
+		46C051B62F2841AF00440FFE /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 46C051B52F2841AF00440FFE /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -5,7 +5,6 @@ import SwiftUI
 /// Main content view with Liquid Glass three-column navigation
 struct MainContentView: View {
     @Environment(DownloadManager.self) private var downloadManager
-    @State private var selectedCategory: TaskCategory = .downloading
     @State private var selectedTaskIds: Set<String> = []
     @State private var settingsTab: EmbeddedSettingsTab = .general
     @Namespace private var settingsNamespace
@@ -21,28 +20,28 @@ struct MainContentView: View {
 
         NavigationSplitView(columnVisibility: $sidebarVisibility) {
             // Sidebar
-            SidebarView(selectedCategory: $selectedCategory)
+            SidebarView(selectedCategory: $manager.currentCategory)
                 .navigationSplitViewColumnWidth(min: 220, ideal: 220, max: 280)
         } detail: {
             ZStack {
                 // Layer 1: Settings - Persistently cached in memory
                 EmbeddedPreferencesView(activeTab: $settingsTab)
                     .environment(downloadManager)
-                    .opacity(selectedCategory == .settings ? 1 : 0)
-                    .allowsHitTesting(selectedCategory == .settings)
+                    .opacity(downloadManager.currentCategory == .settings ? 1 : 0)
+                    .allowsHitTesting(downloadManager.currentCategory == .settings)
 
                 // Layer 2: About
                 NavigationStack {
                     AboutView()
                 }
-                .opacity(selectedCategory == .about ? 1 : 0)
-                .allowsHitTesting(selectedCategory == .about)
+                .opacity(downloadManager.currentCategory == .about ? 1 : 0)
+                .allowsHitTesting(downloadManager.currentCategory == .about)
 
                 // Layer 3: Task Lists (All categories except settings/about)
-                if selectedCategory != .settings && selectedCategory != .about {
+                if downloadManager.currentCategory != .settings && downloadManager.currentCategory != .about {
                     ZStack(alignment: .trailing) {
                         TaskListView(
-                            category: selectedCategory,
+                            category: downloadManager.currentCategory,
                             selectedTaskIds: $selectedTaskIds,
                             isInspectorPresented: $isInspectorPresented
                         )
@@ -94,7 +93,7 @@ struct MainContentView: View {
                     }
                 }
             }
-            .animation(.none, value: selectedCategory) // Instant switch for performance
+            .animation(.none, value: downloadManager.currentCategory) // Instant switch for performance
         }
         .preferredColorScheme(appTheme == "auto" ? nil : (appTheme == "dark" ? .dark : .light))
         .id(appTheme) // Force full rebuild on theme setting change
@@ -135,19 +134,19 @@ struct MainContentView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .openSettings)) { _ in
-            selectedCategory = .settings
+            downloadManager.currentCategory = .settings
             sidebarVisibility = .all
         }
         // For now, using standard styling
         .onChange(of: downloadManager.shouldResetNavigation) { _, newValue in
             if newValue {
-                selectedCategory = .downloading
+                downloadManager.currentCategory = .downloading
                 downloadManager.shouldResetNavigation = false
             }
         }
         .toolbar {
             ToolbarItem(placement: .principal) {
-                if selectedCategory == .settings {
+                if downloadManager.currentCategory == .settings {
                     LiquidSettingsPicker(selection: $settingsTab)
                 } else {
                     Spacer() // Acts as a full-width glue to push everything to the right

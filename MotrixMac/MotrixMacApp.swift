@@ -1,5 +1,6 @@
 import SwiftUI
 import UserNotifications
+import Sparkle
 
 // Notification for opening main window
 extension Notification.Name {
@@ -76,32 +77,44 @@ struct MotrixCommands: Commands {
     let downloadManager: DownloadManager
 
     var body: some Commands {
+        CommandGroup(replacing: .appInfo) {
+            Button("关于 MotrixMac") {
+                DownloadManager.shared.currentCategory = .about
+                DownloadManager.shared.shouldOpenMainWindow = true
+                NSApp.activate(ignoringOtherApps: true)
+            }
+        }
+
         CommandGroup(replacing: .appSettings) {
-            Button("Settings...") {
+            Button("设置...") {
                 NotificationCenter.default.post(name: .openSettings, object: nil)
             }
             .keyboardShortcut(",", modifiers: .command)
+            
+            Button("检查更新...") {
+                AppDelegate.shared?.updaterController.checkForUpdates(nil)
+            }
         }
 
         CommandGroup(replacing: .newItem) {
-            Button("New Download") {
+            Button("新建下载") {
                 downloadManager.showAddTaskSheet = true
             }
             .keyboardShortcut("n", modifiers: .command)
 
-            Button("New Torrent Download") {
+            Button("新建种子下载") {
                 downloadManager.showAddTorrentSheet = true
             }
             .keyboardShortcut("t", modifiers: [.command, .shift])
         }
 
         CommandGroup(after: .toolbar) {
-            Button("Pause All") {
+            Button("全部暂停") {
                 Task { await downloadManager.pauseAll() }
             }
             .keyboardShortcut("p", modifiers: [.command, .option])
 
-            Button("Resume All") {
+            Button("全部恢复") {
                 Task { await downloadManager.resumeAll() }
             }
             .keyboardShortcut("r", modifiers: [.command, .option])
@@ -141,9 +154,21 @@ struct MenuBarLabel: View {
 
 /// Application delegate for handling system-level events
 class AppDelegate: NSObject, NSApplicationDelegate {
+    static private(set) var shared: AppDelegate?
+    
     // Make aria2Process accessible for preferences
     var aria2Process: EngineProcess?
     private var dockObserver: NSKeyValueObservation?
+    
+    // Sparkle updater controller
+    let updaterController: SPUStandardUpdaterController
+    
+    override init() {
+        // Initialize Sparkle
+        self.updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+        super.init()
+        Self.shared = self
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Start app logging
