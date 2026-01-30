@@ -69,6 +69,7 @@ final class DownloadManager {
     private var aria2Service: Aria2Service?
     private var refreshTask: Task<Void, Never>?
     private var speedHistoryCache: [String: [Int64]] = [:]
+    private var taskDates: [String: Date] = [:] // Cache to store stable addedAt/completedAt dates
 
     private init() {
         requestNotificationPermission()
@@ -92,6 +93,10 @@ final class DownloadManager {
             let data = try Data(contentsOf: path)
             let tasks = try JSONDecoder().decode([String: DownloadTask].self, from: data)
             self.persistentTasks = tasks
+            // Restore dates from persistence
+            for (id, task) in tasks {
+                self.taskDates[id] = task.addedAt
+            }
             print("DownloadManager: Loaded \(tasks.count) persistent tasks")
         } catch {
             print("DownloadManager: Failed to load persistent tasks: \(error)")
@@ -305,6 +310,17 @@ final class DownloadManager {
                         
                         // Update cache
                         self.speedHistoryCache[newTask.id] = history
+                    }
+                    
+                    // 2b. Restore Stable Date (addedAt)
+                    // Aria2 RPC returns new Date() every time. We must use our cached date.
+                    if let cachedDate = self.taskDates[newTask.id] {
+                        task.addedAt = cachedDate
+                    } else {
+                        // First time seeing this task in this session (and not in persistence)
+                        // This effectively sets 'addedAt' to 'Session Discovery Time' for new tasks
+                        // For a freshly added task, this is correct (Now).
+                        self.taskDates[newTask.id] = task.addedAt
                     }
 
                     // 3. Persistent Storage logic:
@@ -761,6 +777,7 @@ final class DownloadManager {
         }
         
         // 2. Speed and ETA
+        task.formattedStatusText = task.displayStatus // Restore missing assignment
         if task.isActive {
             task.formattedDownloadSpeed = formatter.string(fromByteCount: task.downloadSpeed) + "/s"
             task.formattedETA = task.eta
@@ -771,10 +788,27 @@ final class DownloadManager {
                 task.formattedStatusLine = "\(task.formattedSizeText) · \(task.formattedDownloadSpeed)"
             }
         } else {
-            task.formattedDownloadSpeed = ""
-            task.formattedETA = ""
-            task.formattedStatusText = task.displayStatus
             task.formattedStatusLine = "\(task.formattedSizeText) · \(task.formattedStatusText)"
+        }
+        
+        // 3. File existence check (for sorting and UI)
+        if task.status == "complete" {
+            // Only check if files array is populated, or rely on dir/name
+            var filePath = ""
+            if let firstFile = task.files.first?.path, !firstFile.isEmpty {
+                filePath = firstFile
+            } else {
+                filePath = task.dir + "/" + task.name
+            }
+            
+            // Should calculate this asynchronously?
+            // Doing it here (called in refreshTasks) is on background actor or MainActor?
+            // DownloadManager is @MainActor.
+            // FileExists is fast on SSD, but might block main thread slightly if many files.
+            // But this is the only way to support "Real-time" sorting without complex state.
+            task.isFileMissing = !FileManager.default.fileExists(atPath: filePath)
+        } else {
+            task.isFileMissing = false
         }
     }
 
@@ -792,7 +826,22 @@ final class DownloadManager {
         case .size:
             sorted = categoryTasks.sorted { $0.totalLength > $1.totalLength }
         case .progress:
-            sorted = categoryTasks.sorted { $0.progress > $1.progress }
+            // Custom Logic:
+            // 1. Files NOT missing come first (isFileMissing == false < isFileMissing == true)
+            // 2. Completed tasks (Progress=1.0) sort by Date Added (Descending)
+            // 3. Active tasks sorting (Descending progress)
+            sorted = categoryTasks.sorted { t1, t2 in
+                if t1.isFileMissing != t2.isFileMissing {
+                    return !t1.isFileMissing // Present files first
+                }
+                
+                // If both are completed
+                if t1.status == "complete" && t2.status == "complete" {
+                     return t1.addedAt > t2.addedAt
+                }
+                
+                return t1.progress > t2.progress
+            }
         }
 
         if searchText.isEmpty {

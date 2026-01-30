@@ -34,3 +34,7 @@ packages/
 # MotrixMac specific
 bin/
 *.log
+
+# Local Release & Scripts
+releases/
+scripts/

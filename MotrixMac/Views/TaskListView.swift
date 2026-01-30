@@ -171,6 +171,14 @@ struct TaskListView: View {
             }
             .focusable()
             .focusEffectDisabled()
+            .onAppear {
+                // Initial set
+                QuickLookManager.shared.visibleContentRect = outerGeometry.frame(in: .global)
+            }
+            .onChange(of: outerGeometry.frame(in: .global)) { _, newFrame in
+                // Update on resize/move
+                QuickLookManager.shared.visibleContentRect = newFrame
+            }
         }
     }
     
@@ -470,6 +478,7 @@ struct TaskListView: View {
         if let panel = QLPreviewPanel.shared() {
             QuickLookManager.shared.updateSourceWindow(NSApp.keyWindow)
             QuickLookManager.shared.currentURL = url
+            QuickLookManager.shared.previewingTaskId = firstId
             QuickLookManager.shared.setCache(for: url, frame: itemWindowFrames[firstId] ?? .zero, image: itemImages[firstId])
             
             panel.dataSource = QuickLookManager.shared
@@ -538,6 +547,7 @@ struct TaskListView: View {
 
 // MARK: - Quick Look 原生管理类
 
+@Observable
 class QuickLookManager: NSObject, QLPreviewPanelDataSource, QLPreviewPanelDelegate {
     static let shared = QuickLookManager()
     
@@ -546,10 +556,33 @@ class QuickLookManager: NSObject, QLPreviewPanelDataSource, QLPreviewPanelDelega
     private var imageCache: [URL: NSImage] = [:]
     
     var currentURL: URL?
-    private(set) var sourceWindow: NSWindow? // 锁定主窗口引用
+    var previewingTaskId: String? // Track active preview ID for Hero animation logic
     
+    var visibleContentRect: CGRect = .zero 
+    private(set) var sourceWindow: NSWindow? 
+    
+    // Observation requires us not to use NSObject if possible, but we need it for delegates.
+    // @Observable macro works on classes.
+    
+    override init() {
+        super.init()
+        setupNotifications()
+    }
+    
+    private func setupNotifications() {
+        NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: nil, queue: .main) { [weak self] note in
+            if let panel = note.object as? QLPreviewPanel, panel == QLPreviewPanel.shared() {
+                // Delay clearing to allow animation to finish visually covering the icon
+                // Standard macOS duration is roughly 0.25-0.3s. 
+                // We keep the icon hidden until the animation completes to prevent ghosting.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    self?.previewingTaskId = nil
+                }
+            }
+        }
+    }
+
     func setCache(for url: URL, frame: CGRect, image: NSImage?) {
-        // 过滤掉全零坐标，防止动画飞向左下角
         if frame != .zero {
             frameCache[url] = frame
         }
@@ -581,6 +614,17 @@ class QuickLookManager: NSObject, QLPreviewPanelDataSource, QLPreviewPanelDelega
         guard let url = item as? URL,
               let itemFrame = frameCache[url],
               let window = sourceWindow else { return .zero }
+        
+        // 裁剪检查：使用 Window 坐标系进行判断 (因为 visibleContentRect 和 itemFrame 都是 Window 坐标)
+        if visibleContentRect != .zero {
+            let intersection = itemFrame.intersection(visibleContentRect)
+            let originalArea = itemFrame.width * itemFrame.height
+            let visibleArea = intersection.width * intersection.height
+            
+            if visibleArea < (originalArea * 0.5) {
+                return .zero
+            }
+        }
         
         // 翻转坐标系：SwiftUI (Top-left) -> AppKit (Bottom-left) 
         // 必须使用锁定后的主窗口高度，否则当 QL 面板在前时 window.frame.height 是错的

@@ -15,12 +15,12 @@ struct TaskItemView: View {
     var onThumbnailFrameChanged: (CGRect) -> Void = { _ in }
     var onThumbnailImageChanged: (NSImage) -> Void = { _ in }
     var onShowInfo: () -> Void = {}
-
+    
     @State private var isHovering = false
     @State private var showDeleteConfirmation = false
     @State private var deleteFiles = false
     @State private var rememberChoice = false
-
+    
     var body: some View {
         HStack(alignment: .center, spacing: 16) {
             // Left Accent Bar (Selection Indicator)
@@ -31,10 +31,10 @@ struct TaskItemView: View {
                 .animation(.none, value: isSelected) // IMMEDIATE FEEDBACK
                 .frame(height: 44)
                 .padding(.leading, -8) // Pull it slightly left
-
+            
             // File type icon/thumbnail
             ZStack {
-                if task.fileType == .image {
+                if task.fileType == .image && !task.isFileMissing {
                     TaskThumbnailView(task: task, size: 44, onImageLoaded: { image in
                         onThumbnailImageChanged(image)
                     })
@@ -64,7 +64,8 @@ struct TaskItemView: View {
                         }
                 }
             )
-
+            // Removed opacity hack: .opacity(QuickLookManager.shared.previewingTaskId == task.id ? 0 : 1)
+            
             // Task info (Top & Bottom)
             VStack(alignment: .leading, spacing: 6) {
                 // Row 1: File name (Headline)
@@ -72,8 +73,9 @@ struct TaskItemView: View {
                     .font(.headline)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                    .foregroundStyle(.primary)
-
+                    .foregroundStyle(task.isFileMissing ? .secondary : .primary)
+                    .opacity(task.isFileMissing ? 0.8 : 1.0)
+                
                 // Row 2: Status Metadata (Subheadline)
                 HStack(spacing: 8) {
                     if task.isActive {
@@ -89,18 +91,21 @@ struct TaskItemView: View {
                                 .frame(width: 100)
                         }
                     }
-
+                    
+                    
+                    
                     // Row 2: Pre-calculated Status line (Scheme A)
+                    // Status text
                     if !task.formattedStatusLine.isEmpty {
-                        Text(task.formattedStatusLine)
+                         Text(task.formattedStatusLine + (task.isFileMissing ? " · 已移除" : ""))
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(task.isFileMissing ? .tertiary : .secondary)
                     }
                 }
             }
-
+            
             Spacer()
-
+            
             // Row 3 (Right): Action Buttons
             // Only visible on hover or selection, but layout preserved to avoid jumps
             Group {
@@ -128,6 +133,7 @@ struct TaskItemView: View {
                 isHovering = hovering
             }
         }
+        // Removed local check: .onAppear { checkFileExistence() }
         .contextMenu {
             TaskContextMenu(task: task)
         }
@@ -150,8 +156,7 @@ struct TaskItemView: View {
             )
         }
     }
-
-
+    
     private var progressColor: Color {
         switch task.status {
         case "error": return .red
@@ -159,6 +164,8 @@ struct TaskItemView: View {
         default: return .accentColor
         }
     }
+    
+    // Removed private func checkFileExistence()
 }
 
 // MARK: - File Icon
@@ -183,6 +190,7 @@ struct FileIconView: View {
 struct StatusBadge: View {
     let status: String
     var displayStatus: String? = nil
+    var isFileMissing: Bool = false
 
     var body: some View {
         Text(displayText)
@@ -205,7 +213,7 @@ struct StatusBadge: View {
         switch status {
         case "waiting": return "等待中"
         case "paused": return "已暂停"
-        case "complete": return "已完成"
+        case "complete": return isFileMissing ? "已完成 · 已移除" : "已完成"
         case "error": return "出现错误"
         case "removed": return "已取消"
         case "active": return "下载中"

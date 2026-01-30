@@ -25,6 +25,9 @@ struct DownloadTask: Identifiable, Equatable, Codable {
     var errorMessage: String?
     var bitfield: String?
     var downloadSpeedHistory: [Int64] = []
+    
+    // Transformed property for UI sorting
+    var isFileMissing: Bool = false
 
     // Pre-calculated strings for UI performance (Scheme A)
     // Excluded from Codable via CodingKeys
@@ -38,7 +41,6 @@ struct DownloadTask: Identifiable, Equatable, Codable {
         case id, name, uri, dir, status, totalLength, completedLength
         case downloadSpeed, uploadSpeed, connections, numSeeders, numPieces
         case infoHash, files, peers, trackers, addedAt, errorMessage, bitfield
-        case downloadSpeedHistory
     }
 
     // Computed properties
@@ -194,6 +196,7 @@ enum FileType {
     case document
     case archive
     case application
+    case apk
     case other
 
     var icon: String {
@@ -204,6 +207,7 @@ enum FileType {
         case .document: return "doc.text"
         case .archive: return "archivebox"
         case .application: return "app.gift"
+        case .apk: return "app.gift"
         case .other: return "doc"
         }
     }
@@ -216,6 +220,7 @@ enum FileType {
         case .document: return .blue
         case .archive: return .brown
         case .application: return .indigo
+        case .apk: return Color(red: 61/255, green: 220/255, blue: 132/255) // Android Green
         case .other: return .gray
         }
     }
@@ -233,8 +238,10 @@ enum FileType {
             return .document
         case "zip", "rar", "7z", "tar", "gz", "bz2", "xz":
             return .archive
-        case "dmg", "pkg", "app", "exe", "msi", "deb", "rpm":
+        case "dmg", "pkg", "app", "exe", "msi", "deb", "rpm", "iso":
             return .application
+        case "apk":
+            return .apk
         default:
             return .other
         }

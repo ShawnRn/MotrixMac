@@ -357,6 +357,10 @@ struct AdvancedPreferencesTab: View {
     @State private var originalTrackerListText: String = ""
     @State private var originalUpdateInterval: String = "daily"
 
+    // Log Level Persistence
+    @AppStorage("LogLevel") private var logLevelRaw: Int = 1
+
+
     // Fetching state
     @State private var isFetchingTrackers = false
 
@@ -611,8 +615,8 @@ struct AdvancedPreferencesTab: View {
             // Log Settings
             Section {
                  Picker("日志级别", selection: Binding(
-                    get: { LogLevel(rawValue: UserDefaults.standard.integer(forKey: "LogLevel")) ?? .info },
-                    set: { Logger.shared.level = $0 }
+                    get: { LogLevel(rawValue: logLevelRaw) ?? .info },
+                    set: { logLevelRaw = $0.rawValue }
                 )) {
                     ForEach(LogLevel.allCases) { level in
                         Text(level.description).tag(level)
@@ -620,6 +624,9 @@ struct AdvancedPreferencesTab: View {
                 }
                 .pickerStyle(.menu)
                 .help("设置应用程序日志的详细程度")
+                .onChange(of: logLevelRaw) { _, newValue in
+                    Logger.shared.level = LogLevel(rawValue: newValue) ?? .info
+                }
                 
                 Button("打开日志目录") {
                     openLogDirectory()

@@ -37,6 +37,23 @@ struct AboutView: View {
     ]
     @State private var changelogs: [ChangelogItem] = [
         ChangelogItem(
+            version: "1.1",
+            date: "2026-01-30",
+            changes: [
+                "优化了任务列表排序逻辑：已完成任务按时间倒序排列，移除文件的任务自动沉底。",
+                "修复了 Quick Look 预览动画的若干问题，现在更加丝滑流畅。",
+                "修复了任务列表状态文字丢失的问题。",
+                "优化了 UI 细节，文件缺失的任务显示为灰色。"
+            ]
+        ),
+        ChangelogItem(
+            version: "1.0.9",
+            date: "2026-01-27",
+            changes: [
+                "修复了日志级别无法选择的问题。"
+            ]
+        ),
+        ChangelogItem(
             version: "1.0.8",
             date: "2026-01-27",
             changes: [
