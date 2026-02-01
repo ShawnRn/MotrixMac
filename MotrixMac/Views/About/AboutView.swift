@@ -40,11 +40,9 @@ struct AboutView: View {
             version: "1.1.1",
             date: "2026-02-01",
             changes: [
-                "优化了侧边栏动画，恢复了丝滑的从右侧滑入效果。",
-                "修复了详细信息侧边栏位置偏移的问题。",
                 "新增 .icns 文件缩略图支持及 Quick Look 预览。",
                 "优化了双击打开文件的动画效果（仿 Finder 放大）。",
-                "修复了 Quick Look 预览窗口关闭时的闪烁问题。"
+                "修复了一些 bugs。"
             ]
         ),
         ChangelogItem(
