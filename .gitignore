@@ -40,3 +40,5 @@ releases/
 scripts/
 
 AppIcon/
+
+.agent/skills/
