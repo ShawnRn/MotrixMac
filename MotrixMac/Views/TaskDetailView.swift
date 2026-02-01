@@ -194,8 +194,17 @@ struct GeneralTabView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                if !task.downloadSpeedHistory.isEmpty {
+                if !task.downloadSpeedHistory.isEmpty, (task.downloadSpeedHistory.max() ?? 0) > 0 {
                     DetailSection(title: "速度走势") {
+                        if let maxSpeed = task.downloadSpeedHistory.max(), maxSpeed > 0 {
+                            Label("峰值: \(maxSpeed.formatted(.byteCount(style: .file)))/s", systemImage: "bolt.fill")
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .foregroundStyle(Color.accentColor)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.accentColor.opacity(0.1), in: Capsule())
+                        }
+                    } content: {
                         SpeedChartView(history: task.downloadSpeedHistory)
                             .padding(.top, 4)
                         
@@ -207,7 +216,8 @@ struct GeneralTabView: View {
                                 .padding(.bottom, 4)
                         }
                     }
-                } else if let bitfield = task.bitfield, !bitfield.isEmpty {
+                }
+ else if let bitfield = task.bitfield, !bitfield.isEmpty {
                     DetailSection(title: "分块进度") {
                         PieceProgressView(bitfield: bitfield, numPieces: task.numPieces, connections: task.connections)
                     }
@@ -256,15 +266,33 @@ struct GeneralTabView: View {
     }
 }
 
-struct DetailSection<Content: View>: View {
+struct DetailSection<Header: View, Content: View>: View {
     let title: String
+    @ViewBuilder let header: Header
     @ViewBuilder let content: Content
+
+    init(title: String, @ViewBuilder header: () -> Header = { EmptyView() }, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.header = header()
+        self.content = content()
+    }
+
+    // Convenience for no header case
+    init(title: String, @ViewBuilder content: () -> Content) where Header == EmptyView {
+        self.title = title
+        self.header = EmptyView()
+        self.content = content()
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.headline)
-                .foregroundStyle(.secondary)
+            HStack {
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                header
+            }
 
             VStack(spacing: 8) {
                 content
@@ -327,11 +355,11 @@ struct SpeedChartView: View {
         }
         .chartXAxis(.hidden)
         .chartYAxis {
-            AxisMarks(position: .leading) { value in
+            AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { value in
                 AxisValueLabel {
                     if let speed = value.as(Double.self) {
                         Text(Int64(speed).formatted(.byteCount(style: .file)) + "/s")
-                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .font(.system(size: 9, weight: .medium, design: .monospaced))
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -339,7 +367,8 @@ struct SpeedChartView: View {
                     .foregroundStyle(.quaternary)
             }
         }
-        .frame(height: 100)
+        .chartYScale(domain: 0...max(1, Double(history.max() ?? 0) * 1.1))
+        .frame(height: 120)
         .padding(.vertical, 8)
     }
 }

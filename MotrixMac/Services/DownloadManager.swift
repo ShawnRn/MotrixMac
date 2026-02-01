@@ -283,6 +283,8 @@ final class DownloadManager {
                 }
             }
 
+                let oldTasksMap = Dictionary(uniqueKeysWithValues: self.tasks.map { ($0.id, $0) })
+                
                 self.tasks = newTasks.compactMap { newTask in
                     // Skip tasks that are currently being deleted to prevent ghosting
                     if self.deletingGIDs.contains(newTask.id) {
@@ -290,6 +292,7 @@ final class DownloadManager {
                     }
                     
                     var task = newTask
+                    let oldTask = oldTasksMap[newTask.id]
                     
                     // 1. Restore speed history from cache if available
                     if let cachedHistory = self.speedHistoryCache[newTask.id] {
@@ -299,6 +302,12 @@ final class DownloadManager {
                     // 2. Update with new real-time data if active
                     if newTask.status == "active" {
                         var history = task.downloadSpeedHistory
+                        
+                        // If this is the first time we see it active, prepend a 0 for a cleaner chart start
+                        if history.isEmpty {
+                            history.append(0)
+                        }
+                        
                         history.append(newTask.downloadSpeed)
                         
                         // Limit history size
@@ -307,9 +316,30 @@ final class DownloadManager {
                         }
                         
                         task.downloadSpeedHistory = history
-                        
-                        // Update cache
                         self.speedHistoryCache[newTask.id] = history
+                    } 
+                    // 2a. Handle completion transition: append 0 to show speed drop
+                    else if newTask.status == "complete" {
+                        var history = task.downloadSpeedHistory
+                        
+                        // Case A: Just transitioned from active to complete
+                        if let old = oldTask, old.status == "active" {
+                            if history.last != 0 {
+                                history.append(0)
+                            }
+                        }
+                        // Case B: Instant download (Discovered as complete with no history)
+                        else if history.isEmpty && task.totalLength > 0 {
+                            // Synthesize a spike [0, speed, 0] to show it actually downloaded something
+                            // Since it was "instant", we can estimate a high speed relative to its size
+                            let estimatedSpeed = task.totalLength // Assume it took ~1s if instant
+                            history = [0, estimatedSpeed, 0]
+                        }
+                        
+                        if history != task.downloadSpeedHistory {
+                            task.downloadSpeedHistory = history
+                            self.speedHistoryCache[newTask.id] = history
+                        }
                     }
                     
                     // 2b. Restore Stable Date (addedAt)
@@ -345,6 +375,12 @@ final class DownloadManager {
                 for (gid, task) in self.persistentTasks {
                     if !engineGIDs.contains(gid) && !self.deletingGIDs.contains(gid) {
                         var pTask = task
+                        
+                        // Restore speed history for persistent tasks if missing
+                        if pTask.downloadSpeedHistory.isEmpty, let cachedHistory = self.speedHistoryCache[gid] {
+                            pTask.downloadSpeedHistory = cachedHistory
+                        }
+                        
                         self.precalculateUIStrings(for: &pTask)
                         self.tasks.append(pTask)
                     }
@@ -684,7 +720,7 @@ final class DownloadManager {
                 // If there are active downloads/tasks, refresh faster (1s)
                 // If idle, refresh slower (3s) to save CPU
                 let hasActiveTasks = !activeDownloads.isEmpty || !tasks.filter({ $0.status == "waiting" }).isEmpty
-                let sleepDuration: UInt64 = hasActiveTasks ? 1_000_000_000 : 3_000_000_000 // 1s vs 3s
+                let sleepDuration: UInt64 = hasActiveTasks ? 500_000_000 : 3_000_000_000 // 500ms vs 3s
 
                 do {
                     try await Task.sleep(nanoseconds: sleepDuration)

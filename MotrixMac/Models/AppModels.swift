@@ -4,7 +4,7 @@ import SwiftUI
 /// Core models for the MotrixMac application
 
 /// Represents a download task from aria2
-struct DownloadTask: Identifiable, Equatable, Codable {
+struct DownloadTask: Identifiable, Equatable, Codable, Sendable {
     let id: String  // GID from aria2
     var name: String
     var uri: String
@@ -41,6 +41,115 @@ struct DownloadTask: Identifiable, Equatable, Codable {
         case id, name, uri, dir, status, totalLength, completedLength
         case downloadSpeed, uploadSpeed, connections, numSeeders, numPieces
         case infoHash, files, peers, trackers, addedAt, errorMessage, bitfield
+        case downloadSpeedHistory
+    }
+
+    nonisolated init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        uri = try container.decode(String.self, forKey: .uri)
+        dir = try container.decode(String.self, forKey: .dir)
+        status = try container.decode(String.self, forKey: .status)
+        totalLength = try container.decode(Int64.self, forKey: .totalLength)
+        completedLength = try container.decode(Int64.self, forKey: .completedLength)
+        downloadSpeed = try container.decode(Int64.self, forKey: .downloadSpeed)
+        uploadSpeed = try container.decode(Int64.self, forKey: .uploadSpeed)
+        connections = try container.decode(Int.self, forKey: .connections)
+        numSeeders = try container.decode(Int.self, forKey: .numSeeders)
+        numPieces = try container.decode(Int.self, forKey: .numPieces)
+        infoHash = try container.decodeIfPresent(String.self, forKey: .infoHash)
+        files = try container.decode([TaskFile].self, forKey: .files)
+        peers = (try? container.decode([TaskPeer].self, forKey: .peers)) ?? []
+        trackers = (try? container.decode([TaskTracker].self, forKey: .trackers)) ?? []
+        addedAt = try container.decode(Date.self, forKey: .addedAt)
+        errorMessage = try container.decodeIfPresent(String.self, forKey: .errorMessage)
+        bitfield = try container.decodeIfPresent(String.self, forKey: .bitfield)
+        downloadSpeedHistory = (try? container.decode([Int64].self, forKey: .downloadSpeedHistory)) ?? []
+        
+        // Initialize non-persisted properties
+        isFileMissing = false
+        formattedDownloadSpeed = ""
+        formattedSizeText = ""
+        formattedETA = ""
+        formattedStatusText = ""
+        formattedStatusLine = ""
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(uri, forKey: .uri)
+        try container.encode(dir, forKey: .dir)
+        try container.encode(status, forKey: .status)
+        try container.encode(totalLength, forKey: .totalLength)
+        try container.encode(completedLength, forKey: .completedLength)
+        try container.encode(downloadSpeed, forKey: .downloadSpeed)
+        try container.encode(uploadSpeed, forKey: .uploadSpeed)
+        try container.encode(connections, forKey: .connections)
+        try container.encode(numSeeders, forKey: .numSeeders)
+        try container.encode(numPieces, forKey: .numPieces)
+        try container.encodeIfPresent(infoHash, forKey: .infoHash)
+        try container.encode(files, forKey: .files)
+        try container.encode(peers, forKey: .peers)
+        try container.encode(trackers, forKey: .trackers)
+        try container.encode(addedAt, forKey: .addedAt)
+        try container.encodeIfPresent(errorMessage, forKey: .errorMessage)
+        try container.encodeIfPresent(bitfield, forKey: .bitfield)
+        try container.encode(downloadSpeedHistory, forKey: .downloadSpeedHistory)
+    }
+    
+    // Memberwise initializer (Restored manually since custom init(from:) removes the compiler-generated one)
+    nonisolated init(
+        id: String,
+        name: String,
+        uri: String,
+        dir: String,
+        status: String,
+        totalLength: Int64,
+        completedLength: Int64,
+        downloadSpeed: Int64,
+        uploadSpeed: Int64,
+        connections: Int,
+        numSeeders: Int,
+        numPieces: Int,
+        infoHash: String? = nil,
+        files: [TaskFile] = [],
+        peers: [TaskPeer] = [],
+        trackers: [TaskTracker] = [],
+        addedAt: Date = Date(),
+        errorMessage: String? = nil,
+        bitfield: String? = nil,
+        downloadSpeedHistory: [Int64] = []
+    ) {
+        self.id = id
+        self.name = name
+        self.uri = uri
+        self.dir = dir
+        self.status = status
+        self.totalLength = totalLength
+        self.completedLength = completedLength
+        self.downloadSpeed = downloadSpeed
+        self.uploadSpeed = uploadSpeed
+        self.connections = connections
+        self.numSeeders = numSeeders
+        self.numPieces = numPieces
+        self.infoHash = infoHash
+        self.files = files
+        self.peers = peers
+        self.trackers = trackers
+        self.addedAt = addedAt
+        self.errorMessage = errorMessage
+        self.bitfield = bitfield
+        self.downloadSpeedHistory = downloadSpeedHistory
+        
+        self.isFileMissing = false
+        self.formattedDownloadSpeed = ""
+        self.formattedSizeText = ""
+        self.formattedETA = ""
+        self.formattedStatusText = ""
+        self.formattedStatusLine = ""
     }
 
     // Computed properties

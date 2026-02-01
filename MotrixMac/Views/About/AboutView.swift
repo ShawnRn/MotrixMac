@@ -37,6 +37,15 @@ struct AboutView: View {
     ]
     @State private var changelogs: [ChangelogItem] = [
         ChangelogItem(
+            version: "1.1.2",
+            date: "2026-02-01",
+            changes: [
+                "优化了速度曲线的采样逻辑。",
+                "详细信息新增「峰值速度」勋章徽标。",
+                "优化了图标。"
+            ]
+        ),
+        ChangelogItem(
             version: "1.1.1",
             date: "2026-02-01",
             changes: [
@@ -221,18 +230,12 @@ struct AboutView: View {
             Button {
                 AppDelegate.shared?.updaterController.checkForUpdates(nil)
             } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "arrow.up.circle.fill")
-                    Text("检查更新")
-                }
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.blue)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(
-                    Capsule()
-                        .fill(Color.blue.opacity(0.1))
-                )
+                Label("检查更新", systemImage: "arrow.up.circle.fill")
+                    .font(.system(size: 14, weight: .medium))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(Color.accentColor.opacity(0.1), in: Capsule())
+                    .foregroundStyle(Color.accentColor)
             }
             .buttonStyle(.plain)
             .padding(.bottom, 20)
