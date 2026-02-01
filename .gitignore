@@ -38,3 +38,5 @@ bin/
 # Local Release & Scripts
 releases/
 scripts/
+
+AppIcon/

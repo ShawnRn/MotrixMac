@@ -24,6 +24,23 @@ struct MainContentView: View {
                 .navigationSplitViewColumnWidth(min: 220, ideal: 220, max: 280)
         } detail: {
             detailContent()
+                .toolbar {
+                    if downloadManager.currentCategory == .settings {
+                        ToolbarItem(placement: .principal) {
+                            LiquidSettingsPicker(selection: $settingsTab)
+                        }
+                    } else {
+                        // Use .navigation to push items to the right and avoid ghost separators
+                        ToolbarItem(placement: .navigation) {
+                            Spacer()
+                        }
+                    }
+                    
+                    ToolbarItemGroup(placement: .primaryAction) {
+                        ToolbarButtons()
+                        ToolbarSpeedIndicator()
+                    }
+                }
         }
         .preferredColorScheme(appTheme == "auto" ? nil : (appTheme == "dark" ? .dark : .light))
         .id(appTheme) // Force full rebuild on theme setting change
@@ -67,7 +84,6 @@ struct MainContentView: View {
             downloadManager.currentCategory = .settings
             sidebarVisibility = .all
         }
-        // For now, using standard styling
         .onChange(of: downloadManager.shouldResetNavigation) { _, newValue in
             if newValue {
                 downloadManager.currentCategory = .downloading
@@ -75,112 +91,95 @@ struct MainContentView: View {
             }
         }
         .sheet(isPresented: $manager.showAddTaskSheet) {
-            AddTaskSheet()
-                .environment(downloadManager)
+            AddTaskSheet().environment(downloadManager)
         }
         .sheet(isPresented: $manager.showAddTorrentSheet) {
-            AddTorrentSheet()
-                .environment(downloadManager)
+            AddTorrentSheet().environment(downloadManager)
         }
     }
 
     @ViewBuilder
     private func detailContent() -> some View {
-        Group {
-            switch downloadManager.currentCategory {
-            case .settings:
-                EmbeddedPreferencesView(activeTab: $settingsTab)
-                    .environment(downloadManager)
-            
-            case .about:
-                NavigationStack {
-                    AboutView()
-                }
-            
-            default:
-                // Task Lists
-                ZStack(alignment: .trailing) {
-                    TaskListView(
-                        category: downloadManager.currentCategory,
-                        selectedTaskIds: $selectedTaskIds,
-                        isInspectorPresented: $isInspectorPresented
-                    )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                    // Overlay Layer: Dismiss Barrier & Detail View
-                    if isInspectorPresented,
-                        let taskId = selectedTaskIds.first,
-                        let task = downloadManager.tasks.first(where: { $0.id == taskId })
-                    {
-                        Color.black.opacity(0.01)
-                            .onTapGesture {
-                                withAnimation(.smooth(duration: 0.2)) {
-                                    selectedTaskIds.removeAll()
-                                }
-                            }
-                            .zIndex(0)
-                        
-                        // 整体详情面板容器
-                        ZStack(alignment: .topLeading) {
-                            // 尝试获取缓存的缩略图以实现零延迟“焊死”效果
-                            let cachedImage = task.files.first?.path.isEmpty == false 
-                                ? QuickLookManager.shared.getCachedImage(for: URL(fileURLWithPath: task.files.first!.path)) 
-                                : nil
-                                
-                            TaskDetailView(task: task, initialThumbnail: cachedImage)
-                                .frame(width: 400)
-                                .frame(maxHeight: .infinity)
-                                .background(.ultraThinMaterial)
-                                .overlay(alignment: .leading) {
-                                    Rectangle()
-                                        .fill(Color.primary.opacity(0.05))
-                                        .frame(width: 1)
-                                }
-                                .shadow(color: .black.opacity(0.08), radius: 15, x: -5, y: 0)
-                            
-                            Button {
-                                withAnimation(.smooth(duration: 0.2)) {
-                                    isInspectorPresented = false
-                                }
-                            } label: {
-                                Image(systemName: "xmark")
-                                    .font(.system(size: 14, weight: .medium))
-                                    .foregroundStyle(.secondary)
-                                    .padding(8)
-                                    .background(.ultraThinMaterial, in: Circle())
-                            }
-                            .buttonStyle(.plain)
-                            .padding(.top, 8)
-                            .padding(.leading, 12)
-                        }
-                        .compositingGroup()
-                        .transition(.move(edge: .trailing))
-                        .zIndex(1)
-                    }
-                }
+        switch downloadManager.currentCategory {
+        case .settings:
+            EmbeddedPreferencesView(activeTab: $settingsTab)
+                .environment(downloadManager)
+        case .about:
+            NavigationStack {
+                AboutView()
             }
+        default:
+            taskListWithInspector()
         }
-        .toolbar {
-            if downloadManager.currentCategory == .settings {
-                ToolbarItem(placement: .principal) {
-                    LiquidSettingsPicker(selection: $settingsTab)
-                }
-            } else {
-                ToolbarItem(placement: .navigation) {
-                    Spacer()
-                }
-            }
-            
-            ToolbarItemGroup(placement: .primaryAction) {
-                ToolbarButtons()
-                ToolbarSpeedIndicator()
+    }
+
+    @ViewBuilder
+    private func taskListWithInspector() -> some View {
+        ZStack(alignment: .trailing) {
+            TaskListView(
+                category: downloadManager.currentCategory,
+                selectedTaskIds: $selectedTaskIds,
+                isInspectorPresented: $isInspectorPresented
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if isInspectorPresented,
+                let taskId = selectedTaskIds.first,
+                let task = downloadManager.tasks.first(where: { $0.id == taskId })
+            {
+                inspectorOverlay(for: task)
             }
         }
     }
 
+    @ViewBuilder
+    private func inspectorOverlay(for task: DownloadTask) -> some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.opacity(0.01)
+                .onTapGesture {
+                    withAnimation(.smooth(duration: 0.2)) {
+                        selectedTaskIds.removeAll()
+                    }
+                }
+            
+            ZStack(alignment: .topLeading) {
+                let cachedImage = task.files.first?.path.isEmpty == false 
+                    ? QuickLookManager.shared.getCachedImage(for: URL(fileURLWithPath: task.files.first!.path)) 
+                    : nil
+                    
+                TaskDetailView(task: task, initialThumbnail: cachedImage)
+                    .frame(width: 400)
+                    .frame(maxHeight: .infinity)
+                    .background(.ultraThinMaterial)
+                    .overlay(alignment: .leading) {
+                        Rectangle()
+                            .fill(Color.primary.opacity(0.05))
+                            .frame(width: 1)
+                    }
+                    .shadow(color: .black.opacity(0.08), radius: 15, x: -5, y: 0)
+                
+                Button {
+                    withAnimation(.smooth(duration: 0.2)) {
+                        isInspectorPresented = false
+                    }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .padding(8)
+                        .background(.ultraThinMaterial, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 8)
+                .padding(.leading, 12)
+            }
+            .compositingGroup()
+            .transition(.move(edge: .trailing))
+            .frame(width: 400)
+        }
+    }
+
     private func applyTheme(_ theme: String) {
-        // Force the app's appearance at the NSApplication level for maximum robustness on macOS
-        // This affects window title bar, standard controls, and system materials consistently.
         DispatchQueue.main.async {
             switch theme {
             case "dark":
@@ -188,7 +187,7 @@ struct MainContentView: View {
             case "light":
                 NSApp.appearance = NSAppearance(named: .aqua)
             default:
-                NSApp.appearance = nil // Follow system
+                NSApp.appearance = nil
             }
         }
     }
