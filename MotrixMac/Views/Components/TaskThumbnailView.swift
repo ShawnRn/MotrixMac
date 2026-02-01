@@ -27,11 +27,22 @@ struct TaskThumbnailView: View {
             
             // 缩略图：加载后覆盖显示
             if let thumbnail {
-                Image(nsImage: thumbnail)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
+                if task.name.lowercased().hasSuffix(".icns") {
+                    ZStack {
+                        Color.secondary.opacity(0.1)
+                        Image(nsImage: thumbnail)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .padding(6)
+                    }
                     .frame(width: size, height: size)
-                    .clipped()
+                } else {
+                    Image(nsImage: thumbnail)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: size, height: size)
+                        .clipped()
+                }
             }
         }
         .frame(width: size, height: size)

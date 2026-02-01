@@ -134,49 +134,48 @@ struct MainContentView: View {
 
     @ViewBuilder
     private func inspectorOverlay(for task: DownloadTask) -> some View {
-        ZStack(alignment: .topTrailing) {
-            Color.black.opacity(0.01)
-                .onTapGesture {
-                    withAnimation(.smooth(duration: 0.2)) {
-                        selectedTaskIds.removeAll()
-                    }
+        Color.black.opacity(0.01)
+            .onTapGesture {
+                withAnimation(.smooth(duration: 0.2)) {
+                    selectedTaskIds.removeAll()
                 }
-            
-            ZStack(alignment: .topLeading) {
-                let cachedImage = task.files.first?.path.isEmpty == false 
-                    ? QuickLookManager.shared.getCachedImage(for: URL(fileURLWithPath: task.files.first!.path)) 
-                    : nil
-                    
-                TaskDetailView(task: task, initialThumbnail: cachedImage)
-                    .frame(width: 400)
-                    .frame(maxHeight: .infinity)
-                    .background(.ultraThinMaterial)
-                    .overlay(alignment: .leading) {
-                        Rectangle()
-                            .fill(Color.primary.opacity(0.05))
-                            .frame(width: 1)
-                    }
-                    .shadow(color: .black.opacity(0.08), radius: 15, x: -5, y: 0)
-                
-                Button {
-                    withAnimation(.smooth(duration: 0.2)) {
-                        isInspectorPresented = false
-                    }
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .padding(8)
-                        .background(.ultraThinMaterial, in: Circle())
-                }
-                .buttonStyle(.plain)
-                .padding(.top, 8)
-                .padding(.leading, 12)
             }
-            .compositingGroup()
-            .transition(.move(edge: .trailing))
-            .frame(width: 400)
+            .transition(.opacity)
+        
+        ZStack(alignment: .topLeading) {
+            let cachedImage = task.files.first?.path.isEmpty == false 
+                ? QuickLookManager.shared.getCachedImage(for: URL(fileURLWithPath: task.files.first!.path)) 
+                : nil
+                
+            TaskDetailView(task: task, initialThumbnail: cachedImage)
+                .frame(width: 400)
+                .frame(maxHeight: .infinity)
+                .background(.ultraThinMaterial)
+                .overlay(alignment: .leading) {
+                    Rectangle()
+                        .fill(Color.primary.opacity(0.05))
+                        .frame(width: 1)
+                }
+                .shadow(color: .black.opacity(0.08), radius: 15, x: -5, y: 0)
+            
+            Button {
+                withAnimation(.smooth(duration: 0.2)) {
+                    isInspectorPresented = false
+                }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .padding(8)
+                    .background(.ultraThinMaterial, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 8)
+            .padding(.leading, 12)
         }
+        .compositingGroup()
+        .transition(.move(edge: .trailing))
+        .zIndex(1)
     }
 
     private func applyTheme(_ theme: String) {

@@ -32,6 +32,10 @@ struct TaskListView: View {
     
     // Quick Look Preview State
     @State private var previewURL: URL?
+    
+    // Zoom Animation State
+    @State private var zoomingTaskId: String?
+    @State private var isZooming = false
 
 
     var body: some View {
@@ -158,6 +162,8 @@ struct TaskListView: View {
                     
                     // Layer 3: Marquee selection overlay
                     marqueeSelectionView
+                    
+
                 }
                 .coordinateSpace(name: "TaskListSpace")
             }
@@ -173,13 +179,51 @@ struct TaskListView: View {
             .focusEffectDisabled()
             .onAppear {
                 // Initial set
+                // Initial set
                 QuickLookManager.shared.visibleContentRect = outerGeometry.frame(in: .global)
             }
             .onChange(of: outerGeometry.frame(in: .global)) { _, newFrame in
                 // Update on resize/move
                 QuickLookManager.shared.visibleContentRect = newFrame
             }
+            .overlay {
+                // Layer 4: Zoom Animation Overlay (Viewport Level)
+                if let zoomingId = zoomingTaskId,
+                   let task = downloadManager.filteredTasks.first(where: { $0.id == zoomingId }),
+                   let globalIconFrame = itemWindowFrames[zoomingId], // Use Global Icon Frame
+                   let image = itemImages[zoomingId] {
+                    
+                    let outerFrame = outerGeometry.frame(in: .global)
+                    let relativeX = globalIconFrame.midX - outerFrame.minX
+                    let relativeY = globalIconFrame.midY - outerFrame.minY
+                    
+                    ZStack {
+                        if task.name.lowercased().hasSuffix(".icns") {
+                            // ICNS styling (Matched)
+                            ZStack {
+                                Color.secondary.opacity(0.1)
+                                Image(nsImage: image)
+                                   .resizable()
+                                   .aspectRatio(contentMode: .fit)
+                                   .padding(6)
+                            }
+                        } else {
+                            // Standard styling
+                            Image(nsImage: image)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                        }
+                    }
+                    .frame(width: 44, height: 44)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .scaleEffect(isZooming ? 5.0 : 1.0) // Increased scale for "Fly out" feel
+                    .opacity(isZooming ? 0.0 : 1.0)
+                    .position(x: relativeX, y: relativeY)
+                    .allowsHitTesting(false)
+                }
+            }
         }
+
     }
     
     // MARK: - Task Row (Rewritten)
@@ -247,7 +291,32 @@ struct TaskListView: View {
 
     private func handleDoubleTap(task: DownloadTask) {
         if task.status == "complete" {
-            downloadManager.openFile(task)
+            // Trigger Zoom Animation
+            // Use itemFrames (local coordinate) check
+            if itemFrames[task.id] != nil {
+                // Set initial state
+                zoomingTaskId = task.id
+                
+                // Animate
+                // Use a slightly faster response for snappier feel
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                     isZooming = true
+                }
+                
+                // Delay opening file to let animation COMPLETELY finish to prevent main thread freeze causing visual stutter
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    downloadManager.openFile(task)
+                    
+                    // Reset state
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        isZooming = false
+                        zoomingTaskId = nil
+                    }
+                }
+            } else {
+                // Fallback
+                downloadManager.openFile(task)
+            }
         } else if task.canPause {
             Task { await downloadManager.pauseTask(task) }
         } else if task.canResume {
@@ -644,25 +713,37 @@ class QuickLookManager: NSObject, QLPreviewPanelDataSource, QLPreviewPanelDelega
         // 创建带圆角且保持 Aspect Fill (居中裁剪) 的过渡图像
         // 这样可以确保动画收尾图与渲染出的缩略图视觉完全一致，消除比例压缩感
         let targetSize = NSSize(width: 44, height: 44)
+        let isIcns = url.pathExtension.lowercased() == "icns"
+        
         let roundedImage = NSImage(size: targetSize, flipped: false) { rect in
             let path = NSBezierPath(roundedRect: rect, xRadius: 10, yRadius: 10)
             path.addClip()
             
-            // 计算如何执行 Aspect Fill 居中裁剪
-            let originalSize = image.size
-            let aspectWidth = targetSize.width / originalSize.width
-            let aspectHeight = targetSize.height / originalSize.height
-            let maxAspect = max(aspectWidth, aspectHeight)
-            
-            let drawWidth = originalSize.width * maxAspect
-            let drawHeight = originalSize.height * maxAspect
-            let drawX = (targetSize.width - drawWidth) / 2
-            let drawY = (targetSize.height - drawHeight) / 2
-            
-            image.draw(in: NSRect(x: drawX, y: drawY, width: drawWidth, height: drawHeight),
-                       from: .zero,
-                       operation: .sourceOver,
-                       fraction: 1.0)
+            if isIcns {
+                // ICNS: 绘制浅色背景 + Fit 模式（带 Padding）
+                NSColor.secondaryLabelColor.withAlphaComponent(0.1).setFill()
+                rect.fill()
+                
+                let padding: CGFloat = 6.0
+                let drawRect = rect.insetBy(dx: padding, dy: padding)
+                image.draw(in: drawRect, from: .zero, operation: .sourceOver, fraction: 1.0)
+            } else {
+                // 其他格式：保持 Aspect Fill (居中裁剪)
+                let originalSize = image.size
+                let aspectWidth = targetSize.width / originalSize.width
+                let aspectHeight = targetSize.height / originalSize.height
+                let maxAspect = max(aspectWidth, aspectHeight)
+                
+                let drawWidth = originalSize.width * maxAspect
+                let drawHeight = originalSize.height * maxAspect
+                let drawX = (targetSize.width - drawWidth) / 2
+                let drawY = (targetSize.height - drawHeight) / 2
+                
+                image.draw(in: NSRect(x: drawX, y: drawY, width: drawWidth, height: drawHeight),
+                           from: .zero,
+                           operation: .sourceOver,
+                           fraction: 1.0)
+            }
             return true
         }
         return roundedImage

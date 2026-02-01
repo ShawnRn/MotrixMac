@@ -232,7 +232,7 @@ enum FileType {
             return .video
         case "mp3", "flac", "wav", "aac", "m4a", "ogg", "wma", "ape":
             return .audio
-        case "jpg", "jpeg", "png", "gif", "webp", "heic", "svg", "bmp", "tiff":
+        case "jpg", "jpeg", "png", "gif", "webp", "heic", "svg", "bmp", "tiff", "icns":
             return .image
         case "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md":
             return .document
