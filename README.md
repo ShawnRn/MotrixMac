@@ -3,9 +3,12 @@
 > This is a vibe-coded project.
 > Developed with ❤️ using **Antigravity**.
 
+
 <p align="center">
-  <img src="./pics/icon.png" width="128" alt="MotrixMac Icon" />
+  <img src="./pics/icon.png" width="256" alt="MotrixMac Icon" />
 </p>
+
+
 
 ## A lightweight, native Swift-powered download manager for macOS.
 

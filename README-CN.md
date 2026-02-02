@@ -3,9 +3,12 @@
 > This is a vibe-coded project.
 > 使用 **Antigravity** 倾情开发。
 
+
 <p align="center">
-  <img src="./pics/icon.png" width="128" alt="MotrixMac 图标" />
+  <img src="./pics/icon.png" width="256" alt="MotrixMac 图标" />
 </p>
+
+
 
 ## 一个轻量化的、全原生 Swift 实现的 macOS 下载工具。
 
