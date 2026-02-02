@@ -136,18 +136,19 @@ struct TaskDetailHeader: View {
                 // Large progress bar
                 VStack(alignment: .leading, spacing: 4) {
                     if task.isIndeterminate {
-                        ProgressView()
-                            .progressViewStyle(.linear)
-                            .tint(.accentColor)
+                        IndeterminateBar(tint: task.statusColor, height: 6)
+                            .clipShape(Capsule())
                     } else {
                         ProgressView(value: task.progress)
                             .progressViewStyle(.linear)
-                            .tint(.accentColor)
+                            .tint(task.statusColor)
+                            .frame(height: 6)
+                            .clipShape(Capsule())
                     }
 
                     HStack {
                         if task.isIndeterminate {
-                            Text("Gathering Metadata...")
+                            Text(task.status == "waiting" ? "正在排队..." : "正在获取元数据...")
                         } else {
                             Text("\(Int(task.progress * 100))%")
                         }

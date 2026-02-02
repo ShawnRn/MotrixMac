@@ -161,7 +161,18 @@ struct DownloadTask: Identifiable, Equatable, Codable, Sendable {
     }
 
     var isIndeterminate: Bool {
-        isActive && totalLength <= 0
+        (status == "active" || status == "waiting") && (totalLength <= 0 || (completedLength <= 0 && status != "paused"))
+    }
+
+    var statusColor: Color {
+        switch status {
+        case "error": return .red
+        case "paused": return .yellow
+        case "waiting": return .orange
+        case "active": return .accentColor
+        case "complete": return .green
+        default: return .secondary
+        }
     }
 
     var isActive: Bool {

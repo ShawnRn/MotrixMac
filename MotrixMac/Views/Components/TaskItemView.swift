@@ -78,17 +78,17 @@ struct TaskItemView: View {
                 
                 // Row 2: Status Metadata (Subheadline)
                 HStack(spacing: 8) {
-                    if task.isActive {
-                        // Progress bar for active tasks
-                        if task.totalLength == 0 || (task.progress == 0 && task.status != "paused") {
-                             IndeterminateProgressView()
-                                 .frame(width: 100, height: 4)
+                    if task.status != "complete" && task.status != "removed" {
+                        if task.isIndeterminate {
+                             IndeterminateBar(tint: task.statusColor, height: 6)
+                                 .frame(width: 100)
                                  .clipShape(Capsule())
                         } else {
                             ProgressView(value: task.progress)
                                 .progressViewStyle(.linear)
-                                .tint(progressColor)
-                                .frame(width: 100)
+                                .tint(task.statusColor)
+                                .frame(width: 100, height: 6)
+                                .clipShape(Capsule())
                         }
                     }
                     
@@ -157,13 +157,7 @@ struct TaskItemView: View {
         }
     }
     
-    private var progressColor: Color {
-        switch task.status {
-        case "error": return .red
-        case "paused": return .orange
-        default: return .accentColor
-        }
-    }
+    // statusColor logic moved to DownloadTask extension in AppModels.swift
     
     // Removed private func checkFileExistence()
 }
@@ -442,31 +436,4 @@ struct DeleteConfirmationSheet: View {
     .padding()
 }
 
-struct IndeterminateProgressView: View {
-    @State private var offset: CGFloat = -1.0
-    
-    var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                // Background track
-                Capsule()
-                    .fill(Color.secondary.opacity(0.2))
-                
-                // Moving pill
-                Capsule()
-                    .fill(LinearGradient(
-                        colors: [.clear, .accentColor.opacity(0.5), .clear],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    ))
-                    .frame(width: geometry.size.width * 0.5)
-                    .offset(x: offset * geometry.size.width)
-            }
-            .onAppear {
-                withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
-                    offset = 2.0
-                }
-            }
-        }
-    }
-}
+// Moved to MotrixMac/Views/Components/IndeterminateBar.swift
