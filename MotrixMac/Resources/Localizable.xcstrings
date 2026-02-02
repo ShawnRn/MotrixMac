@@ -19,9 +19,6 @@
     "%lld%%" : {
 
     },
-    "•" : {
-
-    },
     "+ 还有 %lld 个任务" : {
 
     },
@@ -125,6 +122,7 @@
 
     },
     "Changelog" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -210,6 +208,7 @@
       }
     },
     "Done" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -257,9 +256,6 @@
     "English" : {
 
     },
-    "GitHub" : {
-
-    },
     "HTTP" : {
 
     },
@@ -284,6 +280,7 @@
 
     },
     "Licenses" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -668,6 +665,9 @@
     "外观" : {
 
     },
+    "完成" : {
+
+    },
     "密码 （可选）" : {
 
     },
@@ -702,6 +702,9 @@
 
     },
     "恢复" : {
+
+    },
+    "感谢这些伟大的开源项目，它们让 MotrixMac 的诞生成为可能。" : {
 
     },
     "或" : {
@@ -858,6 +861,9 @@
 
     },
     "行为" : {
+
+    },
+    "记录 MotrixMac 进化的点点滴滴。" : {
 
     },
     "设为 0 表示无限制" : {

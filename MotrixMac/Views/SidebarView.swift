@@ -5,6 +5,10 @@ import SwiftUI
 struct SidebarView: View {
     @Environment(DownloadManager.self) private var downloadManager
     @Binding var selectedCategory: TaskCategory
+    @State private var hoveredCategory: TaskCategory? = nil
+
+    @Namespace private var sidebarNamespace
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(spacing: 0) {
@@ -19,9 +23,20 @@ struct SidebarView: View {
                     SidebarItem(
                         category: category,
                         isSelected: selectedCategory == category,
-                        count: downloadManager.taskCount(for: category)
+                        isHovered: hoveredCategory == category,
+                        count: downloadManager.taskCount(for: category),
+                        namespace: sidebarNamespace
                     ) {
-                        selectedCategory = category
+                        if selectedCategory != category {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                selectedCategory = category
+                            }
+                        }
+                    }
+                    .onHover { isHovered in
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            hoveredCategory = isHovered ? category : nil
+                        }
                     }
                 }
             }
@@ -35,18 +50,40 @@ struct SidebarView: View {
                 SidebarItem(
                     category: .settings,
                     isSelected: selectedCategory == .settings,
-                    count: 0
+                    isHovered: hoveredCategory == .settings,
+                    count: 0,
+                    namespace: sidebarNamespace
                 ) {
-                    selectedCategory = .settings
+                    if selectedCategory != .settings {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                            selectedCategory = .settings
+                        }
+                    }
+                }
+                .onHover { isHovered in
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        hoveredCategory = isHovered ? .settings : nil
+                    }
                 }
 
                 // About - navigate to about in main content
                 SidebarItem(
                     category: .about,
                     isSelected: selectedCategory == .about,
-                    count: 0
+                    isHovered: hoveredCategory == .about,
+                    count: 0,
+                    namespace: sidebarNamespace
                 ) {
-                    selectedCategory = .about
+                    if selectedCategory != .about {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                            selectedCategory = .about
+                        }
+                    }
+                }
+                .onHover { isHovered in
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        hoveredCategory = isHovered ? .about : nil
+                    }
                 }
             }
             .padding(.horizontal, 12)
@@ -56,6 +93,9 @@ struct SidebarView: View {
         .ignoresSafeArea(.container, edges: .top)
     }
 }
+
+// Preference Keys for Layout Source (Simplified approach using matchedGeometryEffect directly is preferred)
+// But to be even more robust, we can just use the Namespace pattern.
 
 // MARK: - Logo Header
 
@@ -68,6 +108,7 @@ struct LogoHeader: View {
                 .antialiased(true)
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 64, height: 64)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
             Text("MotrixMac")
                 .font(.system(size: 15, weight: .semibold))
@@ -80,9 +121,12 @@ struct LogoHeader: View {
 // MARK: - Sidebar Item
 
 struct SidebarItem: View {
+    @Environment(\.colorScheme) private var colorScheme
     let category: TaskCategory
     let isSelected: Bool
+    let isHovered: Bool
     let count: Int
+    let namespace: Namespace.ID
     let action: () -> Void
 
     var body: some View {
@@ -115,13 +159,53 @@ struct SidebarItem: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .background {
-                if isSelected {
-                    Capsule()
-                        .fill(Color.accentColor)
+                ZStack {
+                    if isHovered && !isSelected {
+                        Capsule()
+                            .fill(.secondary.opacity(0.08))
+                            .transition(.opacity)
+                    }
+                    
+                    if isSelected {
+                        Capsule()
+                            .fill(Color.accentColor)
+                            .matchedGeometryEffect(
+                                id: (category == .downloading || category == .completed) ? "selection_top" : "selection_bottom",
+                                in: namespace
+                            )
+                            .transition(.asymmetric(insertion: .opacity, removal: .opacity))
+                            .shadow(color: Color.accentColor.opacity(0.35), radius: 8, x: 0, y: 4)
+                            .overlay {
+                                Capsule()
+                                    .stroke(
+                                        LinearGradient(
+                                            colors: [
+                                                .white.opacity(colorScheme == .dark ? 0.25 : 0.5), 
+                                                .clear, 
+                                                .white.opacity(colorScheme == .dark ? 0.1 : 0.2)
+                                            ],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        ),
+                                        lineWidth: 1
+                                    )
+                            }
+                    }
                 }
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(SidebarButtonStyle())
+    }
+}
+
+// MARK: - Button Style
+
+struct SidebarButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
+            .opacity(configuration.isPressed ? 0.9 : 1.0)
+            .animation(.interactiveSpring(), value: configuration.isPressed)
     }
 }
 

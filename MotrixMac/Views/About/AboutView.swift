@@ -37,6 +37,17 @@ struct AboutView: View {
     ]
     @State private var changelogs: [ChangelogItem] = [
         ChangelogItem(
+            version: "1.1.4",
+            date: "2026-02-02",
+            changes: [
+                "新增切换 Tabs 时的动画。",
+                "新增支持通过 Esc 键快速关闭任务详情侧边栏。",
+                "重构「开源许可」与「更新日志」弹窗。",
+                "微调了删除任务的弹窗。",
+                "修复了一些 bugs。"
+            ]
+        ),
+        ChangelogItem(
             version: "1.1.3",
             date: "2026-02-02",
             changes: [
@@ -164,6 +175,14 @@ struct AboutView: View {
                         .interpolation(.high)
                         .antialiased(true)
                         .frame(width: 110, height: 110)
+                        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                        .shadow(color: .black.opacity(0.12), radius: 12, x: 0, y: 6)
+                        .background {
+                            Circle()
+                                .fill(Color.accentColor.opacity(0.12))
+                                .frame(width: 140, height: 140)
+                                .blur(radius: 20)
+                        }
                         
                     VStack(spacing: 6) {
                         Text("MotrixMac")
@@ -181,50 +200,20 @@ struct AboutView: View {
                 }
                 
                 // Navigation Links
-                HStack(spacing: 40) {
-                    Button {
+                HStack(spacing: 24) {
+                    AboutButton(icon: "doc.text.fill", title: "开源许可") {
                         showLicenses = true
-                    } label: {
-                        VStack(spacing: 6) {
-                            Image(systemName: "doc.text.fill")
-                                .font(.system(size: 24))
-                            Text("开源许可")
-                                .font(.caption)
-                        }
-                        .frame(width: 80)
                     }
-                    .buttonStyle(.plain)
                     .sheet(isPresented: $showLicenses) {
                         LicenseView(licenses: licenses)
                             .frame(width: 600, height: 500)
                     }
                     
-                    Link(destination: URL(string: "https://github.com/ShawnRn/MotrixMac")!) {
-                        VStack(spacing: 6) {
-                            Image(systemName: "globe")
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .frame(width: 24, height: 24)
-                                .symbolRenderingMode(.hierarchical)
-                            Text("GitHub")
-                                .font(.caption)
-                        }
-                        .frame(width: 80)
-                    }
-                    .buttonStyle(.plain)
+                    AboutButton(icon: "globe", title: "GitHub", isLink: true, url: "https://github.com/ShawnRn/MotrixMac")
 
-                    Button {
+                    AboutButton(icon: "clock.arrow.circlepath", title: "更新日志") {
                         showChangelog = true
-                    } label: {
-                        VStack(spacing: 6) {
-                            Image(systemName: "clock.arrow.circlepath")
-                                .font(.system(size: 24))
-                            Text("更新日志")
-                                .font(.caption)
-                        }
-                        .frame(width: 80)
                     }
-                    .buttonStyle(.plain)
                     .sheet(isPresented: $showChangelog) {
                         ChangelogView(changelogs: changelogs)
                             .frame(width: 600, height: 500)
@@ -246,7 +235,7 @@ struct AboutView: View {
                     .background(Color.accentColor.opacity(0.1), in: Capsule())
                     .foregroundStyle(Color.accentColor)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(SidebarButtonStyle())
             .padding(.bottom, 20)
             
             // Footer
@@ -267,4 +256,77 @@ struct AboutView: View {
 
 #Preview {
     AboutView()
+}
+
+// MARK: - About Button Component
+
+struct AboutButton: View {
+    let icon: String
+    let title: String
+    var isLink: Bool = false
+    var url: String = ""
+    var action: (() -> Void)? = nil
+    
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var isHovered = false
+    
+    var body: some View {
+        Group {
+            if isLink, let destination = URL(string: url) {
+                Link(destination: destination) {
+                    buttonContent
+                }
+            } else {
+                Button {
+                    action?()
+                } label: {
+                    buttonContent
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+    
+    private var buttonContent: some View {
+        VStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill(isHovered ? Color.accentColor.opacity(0.12) : .secondary.opacity(0.08))
+                    .frame(width: 48, height: 48)
+                    .overlay {
+                        Circle()
+                            .stroke(
+                                LinearGradient(
+                                    colors: [
+                                        isHovered ? .white.opacity(colorScheme == .dark ? 0.4 : 0.8) : .white.opacity(colorScheme == .dark ? 0.3 : 0.6),
+                                        .clear,
+                                        isHovered ? .white.opacity(colorScheme == .dark ? 0.1 : 0.2) : .white.opacity(colorScheme == .dark ? 0.05 : 0.1)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1
+                            )
+                    }
+                    .shadow(color: isHovered ? Color.accentColor.opacity(0.2) : .black.opacity(0.05), 
+                            radius: isHovered ? 8 : 4, x: 0, y: isHovered ? 4 : 2)
+                    .scaleEffect(isHovered ? 1.05 : 1.0)
+                
+                Image(systemName: icon)
+                    .font(.system(size: 20))
+                    .foregroundStyle(Color.accentColor)
+                    .scaleEffect(isHovered ? 1.1 : 1.0)
+            }
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(isHovered ? .primary : .secondary)
+        }
+        .frame(width: 80)
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                isHovered = hovering
+            }
+        }
+    }
 }

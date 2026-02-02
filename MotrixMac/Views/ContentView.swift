@@ -14,6 +14,9 @@ struct MainContentView: View {
     @AppStorage("showInDock") private var showInDock = true
     @State private var isInspectorPresented: Bool = false
     @AppStorage("theme") private var appTheme = "auto"
+    
+    // For smart transitions
+    @State private var previousCategory: TaskCategory = .downloading
 
     var body: some View {
         @Bindable var manager = downloadManager
@@ -90,6 +93,15 @@ struct MainContentView: View {
                 downloadManager.shouldResetNavigation = false
             }
         }
+        .onChange(of: downloadManager.currentCategory) { old, newValue in
+            // Track previous category for transitions
+            previousCategory = old
+            
+            // Reset settings tab to general whenever we switch to settings
+            if newValue == .settings {
+                settingsTab = .general
+            }
+        }
         .sheet(isPresented: $manager.showAddTaskSheet) {
             AddTaskSheet().environment(downloadManager)
         }
@@ -100,17 +112,48 @@ struct MainContentView: View {
 
     @ViewBuilder
     private func detailContent() -> some View {
-        switch downloadManager.currentCategory {
-        case .settings:
-            EmbeddedPreferencesView(activeTab: $settingsTab)
-                .environment(downloadManager)
-        case .about:
-            NavigationStack {
+        let current = downloadManager.currentCategory
+        let isCrossGroup = isCrossGroup(from: previousCategory, to: current)
+        
+        ZStack {
+            switch current {
+            case .settings:
+                EmbeddedPreferencesView(activeTab: $settingsTab)
+                    .environment(downloadManager)
+                    .id("detail-settings")
+            case .about:
                 AboutView()
+                    .id("detail-about")
+            case .downloading:
+                taskListWithInspector()
+                    .id("detail-downloading")
+            case .completed:
+                taskListWithInspector()
+                    .id("detail-completed")
             }
-        default:
-            taskListWithInspector()
         }
+        .transition(isCrossGroup ? crossGroupTransition : smoothTransition)
+        .animation(.spring(response: 0.4, dampingFraction: 0.82), value: current)
+    }
+
+    private func isCrossGroup(from: TaskCategory, to: TaskCategory) -> Bool {
+        let topGroup: Set<TaskCategory> = [.downloading, .completed]
+        // If one is in top group and the other is not, it's a cross-group transition
+        return topGroup.contains(from) != topGroup.contains(to)
+    }
+
+    private var smoothTransition: AnyTransition {
+        .asymmetric(
+            insertion: .opacity.combined(with: .move(edge: .bottom).combined(with: .scale(scale: 0.98))),
+            removal: .opacity
+        )
+    }
+
+    private var crossGroupTransition: AnyTransition {
+        .asymmetric(
+            insertion: .move(edge: .leading).combined(with: .opacity),
+            removal: .move(edge: .leading).combined(with: .opacity)
+        )
     }
 
     @ViewBuilder
@@ -170,6 +213,7 @@ struct MainContentView: View {
                     .background(.ultraThinMaterial, in: Circle())
             }
             .buttonStyle(.plain)
+            .keyboardShortcut(.escape, modifiers: [])
             .padding(.top, 8)
             .padding(.leading, 12)
         }

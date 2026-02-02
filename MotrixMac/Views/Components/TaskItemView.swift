@@ -379,9 +379,16 @@ struct DeleteConfirmationSheet: View {
     var body: some View {
         VStack(spacing: 20) {
             HStack(spacing: 16) {
-                Image(systemName: "trash.circle.fill")
-                    .font(.system(size: 44))
-                    .foregroundStyle(.red)
+                // Simplified, solid icon for a cleaner look
+                ZStack {
+                    Circle()
+                        .fill(.red.opacity(0.1))
+                        .frame(width: 52, height: 52)
+                    
+                    Image(systemName: "trash.fill")
+                        .font(.system(size: 24))
+                        .foregroundStyle(.red)
+                }
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("确认移除此任务记录？")
@@ -416,6 +423,7 @@ struct DeleteConfirmationSheet: View {
                     onConfirm()
                 }
                 .buttonStyle(.borderedProminent)
+                .tint(.red)
                 .keyboardShortcut(.defaultAction)
             }
         }

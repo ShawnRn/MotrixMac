@@ -92,16 +92,23 @@ struct EmbeddedPreferencesView: View {
     
     var body: some View {
         ZStack {
-            if activeTab == .general {
+            switch activeTab {
+            case .general:
                 GeneralPreferencesTab()
-            } else if activeTab == .downloads {
+                    .id("general")
+            case .downloads:
                 DownloadsPreferencesTab()
-            } else if activeTab == .network {
+                    .id("downloads")
+            case .network:
                 NetworkPreferencesTab()
-            } else {
+                    .id("network")
+            case .advanced:
                 AdvancedPreferencesTab()
+                    .id("advanced")
             }
         }
+        .transition(.opacity)
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: activeTab)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
