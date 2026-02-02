@@ -180,9 +180,6 @@
         }
       }
     },
-    "Copyright © 2026 Shawn Rain. All rights reserved." : {
-
-    },
     "delete" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -300,6 +297,9 @@
       }
     },
     "Made with ❤️ by Shawn Rain" : {
+
+    },
+    "MIT Copyright (c) 2026-present Shawn Rain" : {
 
     },
     "MotrixMac" : {

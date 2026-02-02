@@ -10,8 +10,8 @@ struct SidebarView: View {
         VStack(spacing: 0) {
             // App logo area with drag region
             LogoHeader()
-                .padding(.top, 48)
-                .padding(.bottom, 24)
+                .padding(.top, 56)
+                .padding(.bottom, 32)
 
             // Navigation items - task categories
             VStack(spacing: 8) {
@@ -61,15 +61,17 @@ struct SidebarView: View {
 
 struct LogoHeader: View {
     var body: some View {
-        VStack(spacing: 8) {
-            Image("SidebarIcon")
+        VStack(spacing: 12) {
+            Image(nsImage: NSApplication.shared.applicationIconImage)
                 .resizable()
+                .interpolation(.high)
+                .antialiased(true)
                 .aspectRatio(contentMode: .fit)
-                .frame(width: 48, height: 48)
+                .frame(width: 64, height: 64)
 
             Text("MotrixMac")
-                .font(.headline)
-                .fontWeight(.semibold)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.primary)
         }
         .frame(maxWidth: .infinity)
     }

@@ -37,6 +37,13 @@ struct AboutView: View {
     ]
     @State private var changelogs: [ChangelogItem] = [
         ChangelogItem(
+            version: "1.1.3",
+            date: "2026-02-02",
+            changes: [
+                "小幅优化界面。"
+            ]
+        ),
+        ChangelogItem(
             version: "1.1.2",
             date: "2026-02-01",
             changes: [
@@ -154,6 +161,8 @@ struct AboutView: View {
                 VStack(spacing: 16) {
                     Image(nsImage: NSApplication.shared.applicationIconImage)
                         .resizable()
+                        .interpolation(.high)
+                        .antialiased(true)
                         .frame(width: 110, height: 110)
                         
                     VStack(spacing: 6) {
@@ -246,7 +255,7 @@ struct AboutView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 
-                Text("Copyright © 2026 Shawn Rain. All rights reserved.")
+                Text("MIT Copyright (c) 2026-present Shawn Rain")
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
             }
