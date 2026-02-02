@@ -4,9 +4,10 @@
 > Developed with ❤️ using **Antigravity**.
 
 
-<p align="center">
-  <img src="./pics/icon.png" width="256" alt="MotrixMac Icon" />
-</p>
+
+<img src="./pics/icon.png" width="256" alt="MotrixMac Icon" />
+
+
 
 
 

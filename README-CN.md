@@ -4,9 +4,10 @@
 > 使用 **Antigravity** 倾情开发。
 
 
-<p align="center">
-  <img src="./pics/icon.png" width="256" alt="MotrixMac 图标" />
-</p>
+
+<img src="./pics/icon.png" width="256" alt="MotrixMac 图标" />
+
+
 
 
 
