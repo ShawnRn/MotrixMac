@@ -28,9 +28,9 @@ struct AddTaskSheet: View {
         VStack(spacing: 0) {
             // Header
             HStack {
-                Text("新建下载")
+                Text("新建下载任务")
                     .font(.title2)
-                    .fontWeight(.semibold)
+                    .fontWeight(.bold)
 
                 Spacer()
 
@@ -128,7 +128,7 @@ struct AddTaskSheet: View {
                                     value: .init(
                                         get: { Double(connections) },
                                         set: { connections = Int($0) }
-                                    ), in: 1...128, step: 1)
+                                    ), in: 1...128)
                             }
 
                             // Custom Filename
@@ -137,7 +137,12 @@ struct AddTaskSheet: View {
                                     .font(.subheadline)
 
                                 TextField("留空使用原始文件名", text: $customFilename)
-                                    .textFieldStyle(.roundedBorder)
+                                    .textFieldStyle(.plain)
+                                    .padding(10)
+                                    .background {
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .fill(.quaternary)
+                                    }
                             }
 
                             // Custom Headers
@@ -170,10 +175,18 @@ struct AddTaskSheet: View {
             Divider()
 
             // Footer buttons
-            HStack {
-                Button("取消") {
+            HStack(spacing: 12) {
+                Button {
                     dismiss()
+                } label: {
+                    Text("取消")
+                        .font(.system(size: 13, weight: .medium))
+                        .frame(width: 80, height: 28)
+                        .background(Color.gray.opacity(0.15), in: Capsule())
+                        .foregroundStyle(.primary.opacity(0.8))
                 }
+                .buttonStyle(.plain)
+                .buttonStyle(SidebarButtonStyle())
                 .keyboardShortcut(.escape, modifiers: [])
 
                 Spacer()
@@ -181,18 +194,22 @@ struct AddTaskSheet: View {
                 Button {
                     addDownload()
                 } label: {
-                    Text("开始下载")
-                        .fontWeight(.semibold)
-                        .opacity(isProcessing ? 0 : 1)
-                        .overlay {
-                            if isProcessing {
-                                ProgressView()
-                                    .controlSize(.small)
-                            }
+                    HStack(spacing: 8) {
+                        if isProcessing {
+                            ProgressView()
+                                .controlSize(.small)
+                                .colorInvert()
+                        } else {
+                            Text("确定")
                         }
-                        .frame(width: 120, height: 22) // Rock-solid fixed size
+                    }
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(width: 80, height: 28)
+                    .background(Color.accentColor, in: Capsule())
+                    .foregroundStyle(.white)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.plain)
+                .buttonStyle(SidebarButtonStyle())
                 .disabled(urlText.isEmpty || !isValidURL || isProcessing)
                 .keyboardShortcut(.return, modifiers: .command)
             }
@@ -230,6 +247,17 @@ struct AddTaskSheet: View {
     }
 
     private func isValidDownloadURL(_ url: String) -> Bool {
+        let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Reject empty strings
+        if trimmed.isEmpty { return false }
+        
+        // Reject multi-line content (likely tracker list pasted from settings)
+        if trimmed.contains("\n") { return false }
+        
+        // Reject tracker URLs (they end with /announce or /scrape)
+        if trimmed.hasSuffix("/announce") || trimmed.hasSuffix("/scrape") { return false }
+        
         let patterns = [
             "^https?://",
             "^ftp://",
@@ -238,7 +266,7 @@ struct AddTaskSheet: View {
         ]
 
         for pattern in patterns {
-            if url.range(of: pattern, options: .regularExpression) != nil {
+            if trimmed.range(of: pattern, options: .regularExpression) != nil {
                 return true
             }
         }
@@ -284,6 +312,9 @@ struct AddTaskSheet: View {
             do {
                 try await downloadManager.addDownload(uri: urlText, options: options)
                 await MainActor.run {
+                    if UserDefaults.standard.bool(forKey: "autoJumpOnTaskCreated") {
+                        downloadManager.currentCategory = .downloading
+                    }
                     dismiss()
                 }
             } catch {
@@ -296,7 +327,7 @@ struct AddTaskSheet: View {
     }
 }
 
-/// Sheet for adding torrent downloads
+/// Sheet for adding torrent downloads with file selection
 struct AddTorrentSheet: View {
     @Environment(DownloadManager.self) private var downloadManager
     @Environment(\.dismiss) private var dismiss
@@ -307,14 +338,37 @@ struct AddTorrentSheet: View {
         for: .downloadsDirectory, in: .userDomainMask
     ).first!
     @State private var isDragging = false
+    
+    // File selection state
+    @State private var parsedFiles: [TorrentFile] = []
+    @State private var selectedFileIndices: Set<Int> = []
+    @State private var torrentName: String = ""
+    @State private var showFileSelection = false
+    @State private var showAdvancedOptions = false
+    
+    // Advanced options state
+    @State private var customUserAgent = ""
+    @State private var customReferer = ""
+    @State private var customCookie = ""
+    @State private var customProxy = ""
+    @AppStorage("autoJumpOnTaskCreated") private var autoJumpOnTaskCreated = true
+    
+    // Quick filter categories
+    enum FileFilter: String, CaseIterable {
+        case all = "全部"
+        case video = "视频"
+        case audio = "音频"
+        case image = "图片"
+    }
+    @State private var currentFilter: FileFilter = .all
 
     var body: some View {
         VStack(spacing: 0) {
             // Header
-            HStack {
-                Text("添加种子")
+            HStack(alignment: .center) { // Fix: specific alignment
+                Text("添加 Torrent 任务")
                     .font(.title2)
-                    .fontWeight(.semibold)
+                    .fontWeight(.bold)
 
                 Spacer()
 
@@ -331,107 +385,326 @@ struct AddTorrentSheet: View {
 
             Divider()
 
-            // Drop zone
-            ZStack {
-                RoundedRectangle(cornerRadius: 16)
-                    .strokeBorder(
-                        isDragging ? Color.accentColor : Color.secondary.opacity(0.3),
-                        style: StrokeStyle(lineWidth: 2, dash: [8, 4])
-                    )
-                    .background {
-                        RoundedRectangle(cornerRadius: 16)
-                            .fill(isDragging ? Color.accentColor.opacity(0.1) : Color.clear)
-                    }
+            // Content Container - ScrollView ensures header/footer stay visible
+            ScrollView {
+                VStack(spacing: 24) {
+                    if showFileSelection {
+                        // File selection mode
+                        VStack(alignment: .leading, spacing: 12) {
+                            // Torrent name header
+                            HStack {
+                                Image(systemName: "doc.fill")
+                                    .foregroundStyle(Color.accentColor)
+                                Text(torrentName)
+                                    .font(.headline)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Spacer()
+                                Button {
+                                    showFileSelection = false
+                                    torrentURL = nil
+                                    parsedFiles = []
+                                    selectedFileIndices = []
+                                } label: {
+                                    Image(systemName: "trash")
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            
+                            HStack(spacing: 8) {
+                                ForEach(FileFilter.allCases, id: \.self) { filter in
+                                    Button {
+                                        currentFilter = filter
+                                        if filter == .all {
+                                            if selectedFileIndices.count == parsedFiles.count {
+                                                selectedFileIndices = []
+                                            } else {
+                                                selectedFileIndices = Set(parsedFiles.map { $0.index })
+                                            }
+                                        }
+                                    } label: {
+                                        // For "全部" button, show blue only when all files are selected
+                                        let isActive = filter == .all 
+                                            ? (currentFilter == filter && selectedFileIndices.count == parsedFiles.count)
+                                            : (currentFilter == filter)
+                                        Text(filter.rawValue)
+                                            .font(.caption)
+                                            .padding(.horizontal, 10)
+                                            .padding(.vertical, 4)
+                                            .background(isActive ? Color.accentColor : Color.secondary.opacity(0.2), in: Capsule())
+                                            .foregroundStyle(isActive ? .white : .primary)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                Spacer()
+                                
+                                HStack(spacing: 12) {
+                                    // Removed redundant Select All button
 
-                VStack(spacing: 16) {
-                    if let url = torrentURL {
-                        Image(systemName: "doc.fill")
-                            .font(.system(size: 48))
-                            .foregroundStyle(Color.accentColor)
-
-                        Text(url.lastPathComponent)
-                            .font(.headline)
-
-                        Button("选择其他文件") {
-                            selectTorrentFile()
+                                    
+                                    Text("已选 \(selectedFilesCount) 个文件，共 \(ByteCountFormatter.string(fromByteCount: selectedFilesSize, countStyle: .file))")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            
+                            // File list
+                            LazyVStack(spacing: 0) {
+                                ForEach(filteredFiles) { file in
+                                    HStack(spacing: 12) {
+                                        Image(systemName: selectedFileIndices.contains(file.index) ? "checkmark.square.fill" : "square")
+                                            .foregroundStyle(selectedFileIndices.contains(file.index) ? Color.accentColor : .secondary)
+                                            .onTapGesture {
+                                                if selectedFileIndices.contains(file.index) {
+                                                    selectedFileIndices.remove(file.index)
+                                                } else {
+                                                    selectedFileIndices.insert(file.index)
+                                                }
+                                            }
+                                        
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(file.name)
+                                                .font(.subheadline)
+                                                .lineLimit(1)
+                                                .truncationMode(.middle)
+                                            Text(file.formattedSize)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        Spacer()
+                                    }
+                                    .padding(.vertical, 6)
+                                    .padding(.horizontal, 8)
+                                    .background(Color.primary.opacity(0.001))
+                                    .contentShape(Rectangle())
+                                    .onTapGesture {
+                                        if selectedFileIndices.contains(file.index) {
+                                            selectedFileIndices.remove(file.index)
+                                        } else {
+                                            selectedFileIndices.insert(file.index)
+                                        }
+                                    }
+                                    
+                                    if file.id != filteredFiles.last?.id {
+                                        Divider().padding(.leading, 32)
+                                    }
+                                }
+                            }
+                            .padding(8)
+                            .background(Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
                         }
-                        .buttonStyle(.bordered)
                     } else {
-                        Image(systemName: "arrow.down.doc")
-                            .font(.system(size: 48))
-                            .foregroundStyle(.secondary)
+                        // Drop zone (original)
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 16)
+                                .strokeBorder(
+                                    isDragging ? Color.accentColor : Color.secondary.opacity(0.3),
+                                    style: StrokeStyle(lineWidth: 2, dash: [8, 4])
+                                )
+                                .background {
+                                    RoundedRectangle(cornerRadius: 16)
+                                        .fill(isDragging ? Color.accentColor.opacity(0.1) : Color.clear)
+                                }
 
-                        Text("拖放种子文件到此处")
-                            .font(.headline)
-                            .foregroundStyle(.secondary)
+                            VStack(spacing: 16) {
+                                if let url = torrentURL {
+                                    Image(systemName: "doc.fill")
+                                        .font(.system(size: 48))
+                                        .foregroundStyle(Color.accentColor)
 
-                        Text("或")
-                            .foregroundStyle(.tertiary)
+                                    Text(url.lastPathComponent)
+                                        .font(.headline)
+                                        .multilineTextAlignment(.center)
+                                        .lineLimit(3)
+                                        .padding(.horizontal, 16)
+                                        .fixedSize(horizontal: false, vertical: true)
 
-                        Button("选择文件...") {
-                            selectTorrentFile()
+                                    Button("选择其他文件") {
+                                        selectTorrentFile()
+                                    }
+                                    .buttonStyle(.bordered)
+                                } else {
+                                    Image(systemName: "arrow.down.doc")
+                                        .font(.system(size: 48))
+                                        .foregroundStyle(.secondary)
+
+                                    Text("拖放种子文件到此处")
+                                        .font(.headline)
+                                        .foregroundStyle(.secondary)
+
+                                    Text("或")
+                                        .foregroundStyle(.tertiary)
+
+                                    Button("选择文件...") {
+                                        selectTorrentFile()
+                                    }
+                                    .buttonStyle(.bordered)
+                                }
+                            }
+                            }
+
+                        .frame(minHeight: 220)
+                        .onDrop(of: [.fileURL], isTargeted: $isDragging) { providers in
+                            handleDrop(providers: providers)
                         }
-                        .buttonStyle(.bordered)
                     }
-                }
-            }
-            .frame(height: 200)
-            .padding(24)
-            .onDrop(of: [.fileURL], isTargeted: $isDragging) { providers in
-                handleDrop(providers: providers)
-            }
 
-            // Save location
-            VStack(alignment: .leading, spacing: 8) {
-                Label("保存到", systemImage: "folder")
+                    // Save location
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("保存到", systemImage: "folder")
+                            .font(.headline)
+
+                        HStack {
+                            Text(saveDirectory.path(percentEncoded: false))
+                                .font(.body)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+
+                            Spacer()
+
+                            Button("选择...") {
+                                selectDirectory()
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                        .padding(12)
+                        .background {
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(.quaternary)
+                        }
+                    }
+                    
+                    // Advanced Options
+                    DisclosureGroup("高级选项", isExpanded: $showAdvancedOptions) {
+                        VStack(alignment: .leading, spacing: 16) {
+                            // Thread count
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Text("线程数")
+                                    Spacer()
+                                    Text("\(defaultConnections)")
+                                        .foregroundStyle(.secondary)
+                                        .monospacedDigit()
+                                }
+                                .font(.subheadline)
+                                
+                                Slider(
+                                    value: .init(
+                                        get: { Double(defaultConnections) },
+                                        set: { defaultConnections = Int($0) }
+                                    ), in: 1...128)
+                            }
+                            
+                            // User-Agent
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("User-Agent")
+                                    .font(.subheadline)
+                                TextField("留空使用默认值", text: $customUserAgent)
+                                    .textFieldStyle(.plain)
+                                    .padding(10)
+                                    .background(RoundedRectangle(cornerRadius: 8).fill(.quaternary))
+                            }
+                            
+                            // Referer
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Referer")
+                                    .font(.subheadline)
+                                TextField("留空使用默认值", text: $customReferer)
+                                    .textFieldStyle(.plain)
+                                    .padding(10)
+                                    .background(RoundedRectangle(cornerRadius: 8).fill(.quaternary))
+                            }
+                            
+                            // Cookie
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Cookie")
+                                    .font(.subheadline)
+                                TextField("留空使用默认值", text: $customCookie)
+                                    .textFieldStyle(.plain)
+                                    .padding(10)
+                                    .background(RoundedRectangle(cornerRadius: 8).fill(.quaternary))
+                            }
+                            
+                            // Proxy
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("代理")
+                                    .font(.subheadline)
+                                TextField("[http://][USER:PASSWORD@]HOST[:PORT]", text: $customProxy)
+                                    .textFieldStyle(.plain)
+                                    .padding(10)
+                                    .background(RoundedRectangle(cornerRadius: 8).fill(.quaternary))
+                            }
+                            
+                            // Auto jump toggle
+                            Toggle("添加后跳转到下载页面", isOn: $autoJumpOnTaskCreated)
+                                .font(.subheadline)
+                        }
+                        .padding(.top, 12)
+                    }
                     .font(.headline)
-
-                HStack {
-                    Text(saveDirectory.path(percentEncoded: false))
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-
-                    Spacer()
-
-                    Button("选择...") {
-                        selectDirectory()
-                    }
-                    .buttonStyle(.bordered)
                 }
-                .padding(12)
-                .background {
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(.quaternary)
-                }
+                .padding(24)
             }
-            .padding(.horizontal, 24)
-
-            Spacer()
 
             Divider()
 
             // Footer
-            HStack {
-                Button("取消") {
+            HStack(spacing: 12) {
+                Button {
                     dismiss()
+                } label: {
+                    Text("取消")
+                        .font(.system(size: 13, weight: .medium))
+                        .frame(width: 80, height: 28)
+                        .background(Color.gray.opacity(0.15), in: Capsule())
+                        .foregroundStyle(.primary.opacity(0.8))
                 }
+                .buttonStyle(.plain)
+                .buttonStyle(SidebarButtonStyle())
                 .keyboardShortcut(.escape, modifiers: [])
 
                 Spacer()
 
-                Button("添加种子") {
+                Button {
                     addTorrent()
+                } label: {
+                    Text("确定")
+                        .font(.system(size: 13, weight: .semibold))
+                        .frame(width: 80, height: 28)
+                        .background(Color.accentColor, in: Capsule())
+                        .foregroundStyle(.white)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.plain)
+                .buttonStyle(SidebarButtonStyle())
                 .disabled(torrentURL == nil)
+                .keyboardShortcut(.return, modifiers: .command)
             }
             .padding(24)
         }
-        .frame(width: 450, height: 450)
-        // Note: .glassEffect() will be available in macOS 26 SDK
+        .frame(width: 500, height: showFileSelection ? (showAdvancedOptions ? 560 : 500) : 440)
         .background(.regularMaterial)
+        .onAppear {
+            // Check if opened from Finder double-click
+            if let pendingURL = downloadManager.pendingTorrentURL {
+                torrentURL = pendingURL
+                downloadManager.pendingTorrentURL = nil
+                parseTorrent(url: pendingURL)
+            }
+
+            // Sync default save directory
+            let defaultDir = UserDefaults.standard.string(forKey: "defaultDownloadDirectory") ?? ""
+            if !defaultDir.isEmpty {
+                saveDirectory = URL(fileURLWithPath: defaultDir)
+            }
+        }
+        .onDisappear {
+            // Clear pending URL if user dismisses without adding (only if still set)
+            if downloadManager.pendingTorrentURL != nil {
+                downloadManager.pendingTorrentURL = nil
+            }
+        }
     }
 
     private func selectTorrentFile() {
@@ -440,8 +713,9 @@ struct AddTorrentSheet: View {
         panel.canChooseDirectories = false
         panel.allowedContentTypes = [.init(filenameExtension: "torrent")!]
 
-        if panel.runModal() == .OK {
-            torrentURL = panel.url
+        if panel.runModal() == .OK, let url = panel.url {
+            torrentURL = url
+            parseTorrent(url: url)
         }
     }
 
@@ -467,6 +741,7 @@ struct AddTorrentSheet: View {
 
             DispatchQueue.main.async {
                 torrentURL = url
+                parseTorrent(url: url)
             }
         }
         return true
@@ -484,11 +759,31 @@ struct AddTorrentSheet: View {
                     "dir": saveDirectory.path(percentEncoded: false)
                 ]
                 
+                // File selection: if not all files selected, pass select-file option
+                if !selectedFileIndices.isEmpty && selectedFileIndices.count < parsedFiles.count {
+                    // aria2 uses 1-indexed file indices
+                    let selectedIndices = selectedFileIndices.sorted().map { $0 + 1 }.map(String.init).joined(separator: ",")
+                    options["select-file"] = selectedIndices
+                }
+                
                 // Explicitly pass global connection settings
-                // This ensures we respect the user's preference without needing an engine restart
                 if defaultConnections > 0 {
                     options["split"] = defaultConnections
                     options["max-connection-per-server"] = defaultConnections
+                }
+                
+                // Advanced options
+                if !customUserAgent.isEmpty {
+                    options["user-agent"] = customUserAgent
+                }
+                if !customReferer.isEmpty {
+                    options["referer"] = customReferer
+                }
+                if !customCookie.isEmpty {
+                    options["header"] = "Cookie: \(customCookie)"
+                }
+                if !customProxy.isEmpty {
+                    options["all-proxy"] = customProxy
                 }
                 
                 try await downloadManager.addTorrent(
@@ -496,12 +791,203 @@ struct AddTorrentSheet: View {
                     options: options
                 )
                 await MainActor.run {
+                    if autoJumpOnTaskCreated {
+                        downloadManager.currentCategory = .downloading
+                    }
                     dismiss()
                 }
             } catch {
                 // Handle error
             }
         }
+    }
+    
+    private func parseTorrent(url: URL) {
+        print("Parsing torrent from: \(url.path)")
+        
+        // Handle security scope for dropped files
+        let gotAccess = url.startAccessingSecurityScopedResource()
+        defer { if gotAccess { url.stopAccessingSecurityScopedResource() } }
+        
+        do {
+            let data = try Data(contentsOf: url)
+            print("Read \(data.count) bytes")
+            
+            // Parse bencode to extract file info
+            guard let decoded = try BencodeDecoder.decode(data) else {
+                print("Bencode decoding returned nil")
+                return
+            }
+            
+            guard let dict = decoded as? [String: Any] else {
+                print("Root is not a dictionary")
+                return
+            }
+            
+            guard let info = dict["info"] as? [String: Any] else {
+                print("Missing 'info' dictionary")
+                return
+            }
+            
+            torrentName = (info["name"] as? String) ?? url.deletingPathExtension().lastPathComponent
+            
+            var files: [TorrentFile] = []
+            
+            if let fileList = info["files"] as? [[String: Any]] {
+                // Multi-file torrent
+                print("Multi-file torrent found")
+                for (index, file) in fileList.enumerated() {
+                    let pathComponents = (file["path"] as? [String]) ?? []
+                    let name = pathComponents.joined(separator: "/")
+                    let length = (file["length"] as? Int64) ?? 0
+                    files.append(TorrentFile(index: index, name: name, length: length))
+                }
+            } else if let length = info["length"] as? Int64 {
+                // Single-file torrent
+                print("Single-file torrent found")
+                files.append(TorrentFile(index: 0, name: torrentName, length: length))
+            } else {
+                print("No files or single length found in info")
+            }
+            
+            parsedFiles = files
+            selectedFileIndices = Set(files.map { $0.index })
+            showFileSelection = !files.isEmpty // Show for all torrents including single-file
+            print("Parsing successful. Files: \(files.count)")
+            
+        } catch {
+            print("Parse torrent failed: \(error)")
+        }
+    }
+    
+    private var filteredFiles: [TorrentFile] {
+        switch currentFilter {
+        case .all: return parsedFiles
+        case .video: return parsedFiles.filter { $0.isVideo }
+        case .audio: return parsedFiles.filter { $0.isAudio }
+        case .image: return parsedFiles.filter { $0.isImage }
+        }
+    }
+    
+    private var selectedFilesSize: Int64 {
+        parsedFiles.filter { selectedFileIndices.contains($0.index) }.reduce(0) { $0 + $1.length }
+    }
+    
+    private var selectedFilesCount: Int {
+        selectedFileIndices.count
+    }
+}
+
+// MARK: - TorrentFile Model
+
+struct TorrentFile: Identifiable {
+    let index: Int
+    let name: String
+    let length: Int64
+    
+    var id: Int { index }
+    
+    var fileExtension: String {
+        (name as NSString).pathExtension.lowercased()
+    }
+    
+    var isVideo: Bool {
+        ["mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "ts", "rmvb"].contains(fileExtension)
+    }
+    
+    var isAudio: Bool {
+        ["mp3", "flac", "wav", "aac", "ogg", "m4a", "wma", "ape"].contains(fileExtension)
+    }
+    
+    var isImage: Bool {
+        ["jpg", "jpeg", "png", "gif", "bmp", "webp", "tiff", "heic"].contains(fileExtension)
+    }
+    
+    var formattedSize: String {
+        ByteCountFormatter.string(fromByteCount: length, countStyle: .file)
+    }
+}
+
+// MARK: - Bencode Decoder
+
+enum BencodeDecoder {
+    static func decode(_ data: Data) throws -> Any? {
+        var index = data.startIndex
+        return try decodeValue(data, index: &index)
+    }
+    
+    private static func decodeValue(_ data: Data, index: inout Data.Index) throws -> Any? {
+        guard index < data.endIndex else { return nil }
+        
+        let byte = data[index]
+        
+        switch byte {
+        case UInt8(ascii: "i"):
+            return try decodeInteger(data, index: &index)
+        case UInt8(ascii: "l"):
+            return try decodeList(data, index: &index)
+        case UInt8(ascii: "d"):
+            return try decodeDictionary(data, index: &index)
+        case UInt8(ascii: "0")...UInt8(ascii: "9"):
+            return try decodeString(data, index: &index)
+        default:
+            return nil
+        }
+    }
+    
+    private static func decodeInteger(_ data: Data, index: inout Data.Index) throws -> Int64 {
+        index = data.index(after: index) // skip 'i'
+        let start = index
+        while index < data.endIndex && data[index] != UInt8(ascii: "e") {
+            index = data.index(after: index)
+        }
+        let numberString = String(data: data[start..<index], encoding: .utf8) ?? "0"
+        index = data.index(after: index) // skip 'e'
+        return Int64(numberString) ?? 0
+    }
+    
+    private static func decodeString(_ data: Data, index: inout Data.Index) throws -> Any {
+        let start = index
+        while index < data.endIndex && data[index] != UInt8(ascii: ":") {
+            index = data.index(after: index)
+        }
+        let lengthString = String(data: data[start..<index], encoding: .utf8) ?? "0"
+        let length = Int(lengthString) ?? 0
+        index = data.index(after: index) // skip ':'
+        let endIndex = data.index(index, offsetBy: length, limitedBy: data.endIndex) ?? data.endIndex
+        let stringData = data[index..<endIndex]
+        index = endIndex
+        
+        // Try to decode as UTF-8 string, otherwise return raw data
+        if let str = String(data: stringData, encoding: .utf8) {
+            return str
+        }
+        return stringData
+    }
+    
+    private static func decodeList(_ data: Data, index: inout Data.Index) throws -> [Any] {
+        index = data.index(after: index) // skip 'l'
+        var list: [Any] = []
+        while index < data.endIndex && data[index] != UInt8(ascii: "e") {
+            if let value = try decodeValue(data, index: &index) {
+                list.append(value)
+            }
+        }
+        index = data.index(after: index) // skip 'e'
+        return list
+    }
+    
+    private static func decodeDictionary(_ data: Data, index: inout Data.Index) throws -> [String: Any] {
+        index = data.index(after: index) // skip 'd'
+        var dict: [String: Any] = [:]
+        while index < data.endIndex && data[index] != UInt8(ascii: "e") {
+            if let key = try decodeValue(data, index: &index) as? String,
+               let value = try decodeValue(data, index: &index) {
+                dict[key] = value
+            }
+        }
+        index = data.index(after: index) // skip 'e'
+        return dict
     }
 }
 

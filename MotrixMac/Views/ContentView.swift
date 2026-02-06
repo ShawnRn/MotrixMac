@@ -1,6 +1,7 @@
 import AppKit
 import Observation
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Main content view with Liquid Glass three-column navigation
 struct MainContentView: View {
@@ -9,11 +10,16 @@ struct MainContentView: View {
     @State private var settingsTab: EmbeddedSettingsTab = .general
     @Namespace private var settingsNamespace
     
-    // State for the main split view (Sidebar + Content)
+    // Notification extensions consolidated in MotrixMacApp.swift
     @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
     @AppStorage("showInDock") private var showInDock = true
     @State private var isInspectorPresented: Bool = false
     @AppStorage("theme") private var appTheme = "auto"
+    
+    // For navigation guard
+    @State private var showingSettingsGuard = false
+    @State private var pendingCategory: TaskCategory?
+    @AppStorage("settingsAreDirty") private var settingsAreDirty = false
     
     // For smart transitions
     @State private var previousCategory: TaskCategory = .downloading
@@ -23,7 +29,9 @@ struct MainContentView: View {
 
         NavigationSplitView(columnVisibility: $sidebarVisibility) {
             // Sidebar
-            SidebarView(selectedCategory: $manager.currentCategory)
+            SidebarView(selectedCategory: manager.currentCategory) { category in
+                handleCategorySelection(category)
+            }
                 .navigationSplitViewColumnWidth(min: 220, ideal: 220, max: 280)
         } detail: {
             detailContent()
@@ -39,9 +47,8 @@ struct MainContentView: View {
                         }
                     }
                     
-                    ToolbarItemGroup(placement: .primaryAction) {
-                        ToolbarButtons()
-                        ToolbarSpeedIndicator()
+                    ToolbarItem(placement: .primaryAction) {
+                        ToolbarContent()
                     }
                 }
         }
@@ -55,6 +62,9 @@ struct MainContentView: View {
         }
         .onChange(of: appTheme) { _, newValue in
             applyTheme(newValue)
+        }
+        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+            handleDrop(providers)
         }
         .onChange(of: selectedTaskIds) { oldValue, newValue in
             // Auto-close inspector if nothing is selected
@@ -97,16 +107,60 @@ struct MainContentView: View {
             // Track previous category for transitions
             previousCategory = old
             
+            // Close inspector and clear selection when switching categories
+            if old != newValue {
+                withAnimation(.smooth(duration: 0.2)) {
+                    isInspectorPresented = false
+                    selectedTaskIds.removeAll()
+                }
+            }
+            
             // Reset settings tab to general whenever we switch to settings
             if newValue == .settings {
                 settingsTab = .general
             }
+        }
+        .alert("设置未保存", isPresented: $showingSettingsGuard) {
+            Button("应用并离开") {
+                NotificationCenter.default.post(name: .saveSettings, object: nil)
+                if let category = pendingCategory {
+                    switchCategory(category)
+                }
+            }
+            Button("放弃修改", role: .destructive) {
+                NotificationCenter.default.post(name: .discardSettings, object: nil)
+                if let category = pendingCategory {
+                    switchCategory(category)
+                }
+            }
+            Button("取消", role: .cancel) {
+                pendingCategory = nil
+            }
+        } message: {
+            Text("您在设置页面有未保存的更改。离开前是否应用这些更改？")
         }
         .sheet(isPresented: $manager.showAddTaskSheet) {
             AddTaskSheet().environment(downloadManager)
         }
         .sheet(isPresented: $manager.showAddTorrentSheet) {
             AddTorrentSheet().environment(downloadManager)
+        }
+    }
+
+    private func handleCategorySelection(_ category: TaskCategory) {
+        if downloadManager.currentCategory == .settings && settingsAreDirty && category != .settings {
+            pendingCategory = category
+            showingSettingsGuard = true
+        } else {
+            switchCategory(category)
+        }
+    }
+
+    private func switchCategory(_ category: TaskCategory) {
+        if downloadManager.currentCategory != category {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                downloadManager.currentCategory = category
+            }
         }
     }
 
@@ -144,8 +198,14 @@ struct MainContentView: View {
 
     private var smoothTransition: AnyTransition {
         .asymmetric(
-            insertion: .opacity.combined(with: .move(edge: .bottom).combined(with: .scale(scale: 0.98))),
-            removal: .opacity
+            insertion: .modifier(
+                active: LiquidBlurModifier(radius: 12, opacity: 0),
+                identity: LiquidBlurModifier(radius: 0, opacity: 1)
+            ),
+            removal: .modifier(
+                active: LiquidBlurModifier(radius: 12, opacity: 0),
+                identity: LiquidBlurModifier(radius: 0, opacity: 1)
+            )
         )
     }
 
@@ -155,7 +215,6 @@ struct MainContentView: View {
             removal: .move(edge: .leading).combined(with: .opacity)
         )
     }
-
     @ViewBuilder
     private func taskListWithInspector() -> some View {
         ZStack(alignment: .trailing) {
@@ -222,6 +281,30 @@ struct MainContentView: View {
         .zIndex(1)
     }
 
+    private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
+        guard let provider = providers.first else { return false }
+        
+        // We only care about file URLs
+        if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+            // Asynchronously load the URL
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                guard let url = url, url.pathExtension.lowercased() == "torrent" else { return }
+                
+                DispatchQueue.main.async {
+                    // Activate app
+                    NSApp.activate(ignoringOtherApps: true)
+                    
+                    // Trigger "Add Torrent" sheet
+                    DownloadManager.shared.pendingTorrentURL = url
+                    DownloadManager.shared.showAddTorrentSheet = true
+                }
+            }
+            return true
+        }
+        
+        return false
+    }
+
     private func applyTheme(_ theme: String) {
         DispatchQueue.main.async {
             switch theme {
@@ -238,55 +321,63 @@ struct MainContentView: View {
 
 // MARK: - Toolbar Content
 
-struct ToolbarButtons: View {
+struct ToolbarContent: View {
     @Environment(DownloadManager.self) private var downloadManager
     @AppStorage("settingsAreDirty") private var settingsAreDirty = false
 
     var body: some View {
-        Button {
-            downloadManager.showAddTaskSheet = true
-        } label: {
-            Label("Add Download", systemImage: "plus")
-        }
-        .help("Add new download (⌘N)")
+        HStack(spacing: 12) {
+            // Action Buttons - Tight Spacing
+            HStack(spacing: 0) {
+                Button {
+                    downloadManager.showAddTaskSheet = true
+                } label: {
+                    Label("Add Download", systemImage: "plus")
+                }
+                .help("Add new download (⌘N)")
 
-        Button {
-            Task { await downloadManager.refreshTasks() }
-        } label: {
-            Label("Refresh", systemImage: "arrow.clockwise")
-        }
-        .help("Refresh task list")
-        
-        if settingsAreDirty {
-            Button {
-                NotificationCenter.default.post(name: .saveSettings, object: nil)
-            } label: {
-                Label("Save Settings", systemImage: "checkmark.circle.fill")
+                Button {
+                    Task { await downloadManager.refreshTasks() }
+                } label: {
+                    Label("Refresh", systemImage: "arrow.clockwise")
+                }
+                .help("Refresh task list")
+                
+                if settingsAreDirty && downloadManager.currentCategory == .settings {
+                    Button {
+                        NotificationCenter.default.post(name: .saveSettings, object: nil)
+                    } label: {
+                        Label("Apply", systemImage: "checkmark")
+                    }
+                    .help("应用设置")
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .trailing).combined(with: .opacity).combined(with: .scale(scale: 0.8)),
+                        removal: .scale(scale: 0.8).combined(with: .opacity)
+                    ))
+                }
             }
-            .help("保存设置")
+            
+            // Speed Indicator (Restored Original Harmonious Spacing)
+            HStack(spacing: 8) {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.down")
+                        .foregroundStyle(.green)
+                    Text(downloadManager.totalDownloadSpeed.formatted(.byteCount(style: .file)) + "/s")
+                        .monospacedDigit()
+                }
+
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.up")
+                        .foregroundStyle(.blue)
+                    Text(downloadManager.totalUploadSpeed.formatted(.byteCount(style: .file)) + "/s")
+                        .monospacedDigit()
+                }
+            }
+            .font(.caption)
         }
-    }
-}
-
-struct ToolbarSpeedIndicator: View {
-    @Environment(DownloadManager.self) private var downloadManager
-
-    var body: some View {
-        // Global speed display
-        HStack(spacing: 4) {
-            Image(systemName: "arrow.down")
-                .foregroundStyle(.green)
-            Text(downloadManager.totalDownloadSpeed.formatted(.byteCount(style: .file)) + "/s")
-                .monospacedDigit()
-
-            Image(systemName: "arrow.up")
-                .foregroundStyle(.blue)
-            Text(downloadManager.totalUploadSpeed.formatted(.byteCount(style: .file)) + "/s")
-                .monospacedDigit()
-        }
-        .font(.caption)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.trailing, 8) // Prevent sticking to the edge
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: settingsAreDirty)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: downloadManager.currentCategory)
     }
 }
 
@@ -316,3 +407,17 @@ struct EmptyStateView: View {
         .environment(DownloadManager.shared)
         .frame(width: 1024, height: 700)
 }
+
+// MARK: - Transition Helpers
+
+struct LiquidBlurModifier: ViewModifier {
+    var radius: CGFloat
+    var opacity: Double
+    
+    func body(content: Content) -> some View {
+        content
+            .blur(radius: radius)
+            .opacity(opacity)
+    }
+}
+

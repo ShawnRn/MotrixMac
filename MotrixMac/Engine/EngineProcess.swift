@@ -115,9 +115,9 @@ class EngineProcess: ObservableObject {
         process?.executableURL = URL(fileURLWithPath: aria2Path)
         process?.arguments = buildArguments(sessionPath: sessionPath, configPath: configPath)
         
-        // Pipe stderr for debugging
-        process?.standardOutput = FileHandle.nullDevice
+        // Pipe stdout/stderr for debugging
         let pipe = Pipe()
+        process?.standardOutput = pipe // Capture stdout too!
         process?.standardError = pipe
         pipe.fileHandleForReading.readabilityHandler = { handle in
             let data = handle.availableData
@@ -136,6 +136,11 @@ class EngineProcess: ObservableObject {
             writePidFile(pid: pid)
             Logger.info("EngineProcess: aria2 launched (PID: \(pid)) on port \(currentPort)")
             state = .running
+            
+            // Start background tracker update
+            Task {
+                await self.updateTrackers()
+            }
             
             // Post-launch verification: check if it stayed alive
             DispatchQueue.global().asyncAfter(deadline: .now() + 1.0) { [weak self] in
@@ -294,67 +299,194 @@ class EngineProcess: ObservableObject {
         ).first!
         let motrixDir = appSupport.appendingPathComponent("MotrixMac")
         let configPath = motrixDir.appendingPathComponent("aria2.conf")
+        let sessionPath = motrixDir.appendingPathComponent("aria2.session").path
+        let dhtFilePath = motrixDir.appendingPathComponent("dht.dat").path
         
-        // Read user preferences
+        // Read preferences
         let maxConcurrent = UserDefaults.standard.integer(forKey: "maxConcurrentDownloads")
         let defaultConnections = UserDefaults.standard.integer(forKey: "defaultConnections")
-        print("EngineProcess: [Config Generation] Read defaultConnections from UserDefaults: \(defaultConnections)")
-        
         let maxDownloadSpeed = UserDefaults.standard.integer(forKey: "maxDownloadSpeed")
+        let downloadSpeedUnit = UserDefaults.standard.string(forKey: "downloadSpeedUnit") ?? "KB/s"
         let maxUploadSpeed = UserDefaults.standard.integer(forKey: "maxUploadSpeed")
+        let uploadSpeedUnit = UserDefaults.standard.string(forKey: "uploadSpeedUnit") ?? "KB/s"
+        
         let btPort = UserDefaults.standard.integer(forKey: "btListenPort")
         let enableDht = UserDefaults.standard.bool(forKey: "enableDht")
-        let userAgent = UserDefaults.standard.string(forKey: "userAgent") ?? "MotrixMac/2.0"
         
-        // Force sync to ensure we have the latest written values from UI
+        // Seeding and Metadata
+        let btSaveMetadata = UserDefaults.standard.bool(forKey: "btSaveMetadata")
+        let btContinuousSeeding = UserDefaults.standard.bool(forKey: "btContinuousSeeding")
+        let seedRatio = UserDefaults.standard.double(forKey: "seedRatio")
+        let seedTime = UserDefaults.standard.integer(forKey: "seedTime")
+        let continueDownload = UserDefaults.standard.object(forKey: "continueDownload") == nil ? true : UserDefaults.standard.bool(forKey: "continueDownload")
+
+        // Read advanced network preferences
+        let enableIPv6 = UserDefaults.standard.bool(forKey: "enableIPv6")
+        let enableAsyncDNS = UserDefaults.standard.bool(forKey: "enableAsyncDNS")
+        _ = UserDefaults.standard.bool(forKey: "enableUpnp") // enable-port-mapping (Not supported by aria2c)
+        
+        let enablePex = UserDefaults.standard.object(forKey: "enablePex") == nil ? true : UserDefaults.standard.bool(forKey: "enablePex")
+        let enableLpd = UserDefaults.standard.object(forKey: "enableLpd") == nil ? true : UserDefaults.standard.bool(forKey: "enableLpd")
+        let btEncryptionMode = UserDefaults.standard.integer(forKey: "btEncryptionMode") // 0:Allow, 1:Force, 2:Disable
+
+        // Encryption Map
+        var minCrypto = "plain"
+        var requireCrypto = "false"
+        
+        if btEncryptionMode == 1 { // Force
+            minCrypto = "arc4"
+            requireCrypto = "true"
+        }
+
+        let btTrackersRaw = UserDefaults.standard.string(forKey: "btTrackers") ?? ""
+        let cachedTrackers = UserDefaults.standard.string(forKey: "cachedAutoTrackers") ?? ""
+        
+        let combinedTrackers = [cachedTrackers, btTrackersRaw]
+            .joined(separator: "\n")
+            .components(separatedBy: CharacterSet.newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { 
+                !$0.isEmpty && 
+                ($0.hasPrefix("http") || $0.hasPrefix("udp") || $0.hasPrefix("wss")) &&
+                !$0.contains("127.0.0.1") && 
+                !$0.contains("localhost")
+            }
+            .joined(separator: ",")
+        
+        // Proxy Settings (Construct from individual keys)
+        var allProxy = ""
+        if UserDefaults.standard.bool(forKey: "proxyEnabled") {
+            let host = UserDefaults.standard.string(forKey: "proxyHost") ?? ""
+            let port = UserDefaults.standard.string(forKey: "proxyPort") ?? ""
+            let user = UserDefaults.standard.string(forKey: "proxyUsername") ?? ""
+            let pass = UserDefaults.standard.string(forKey: "proxyPassword") ?? ""
+            
+            if !host.isEmpty {
+                var proxyString = "http://"
+                if !user.isEmpty {
+                    proxyString += "\(user)"
+                    if !pass.isEmpty {
+                        proxyString += ":\(pass)"
+                    }
+                    proxyString += "@"
+                }
+                proxyString += host
+                if !port.isEmpty {
+                    proxyString += ":\(port)"
+                }
+                allProxy = proxyString
+            }
+        }
+
+        let autoRename = UserDefaults.standard.object(forKey: "autoRenameFiles") == nil ? true : UserDefaults.standard.bool(forKey: "autoRenameFiles")
+
+        // User Agent
+        // Use custom UA if set, otherwise default to MotrixMac/Version
+        let defaultUA = "MotrixMac/\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")"
+        let userAgent = UserDefaults.standard.string(forKey: "userAgent") ?? defaultUA
+        
         UserDefaults.standard.synchronize()
         
-        // Use current runtime values for RPC - NO LEADING SPACES in config file
-        let config = """
-# MotrixMac aria2 configuration
-# Generated automatically - do not edit
+        var config = """
+# MotrixMac Config (Enhanced BT Mode)
 
-# RPC - Using current runtime values
+# --- RPC ---
 enable-rpc=true
 rpc-listen-port=\(currentPort)
 rpc-secret=\(currentSecret)
 rpc-allow-origin-all=true
+rpc-save-upload-metadata=true
 
-# Downloads
+# --- Network ---
+async-dns=\(enableAsyncDNS)
+enable-dht=true
+dht-listen-port=6881-6999
+listen-port=6881-6999
+disable-ipv6=\(!enableIPv6)
+all-proxy=\(allProxy)
+
+# 超时设置
+connect-timeout=30
+timeout=60
+max-tries=0
+retry-wait=10
+
+# --- Downloads ---
 max-concurrent-downloads=\(maxConcurrent > 0 ? maxConcurrent : 5)
 split=\(defaultConnections > 0 ? defaultConnections : 16)
 max-connection-per-server=\(defaultConnections > 0 ? defaultConnections : 16)
-min-split-size=1M
+min-split-size=4M
+piece-length=1M
+max-download-limit=\(formatSpeedLimit(maxDownloadSpeed, unit: downloadSpeedUnit))
+max-upload-limit=\(formatSpeedLimit(maxUploadSpeed, unit: uploadSpeedUnit))
 
-# Speed limits
-max-overall-download-limit=\(maxDownloadSpeed)K
-max-overall-upload-limit=\(maxUploadSpeed)K
-
-# BitTorrent
-enable-dht=\(enableDht ? "true" : "false")
-enable-dht6=\(enableDht ? "true" : "false")
-listen-port=\(btPort > 0 ? btPort : 6881)
-dht-listen-port=\(btPort > 0 ? btPort : 6881)
-bt-enable-lpd=true
-bt-max-peers=50
-seed-time=0
-
-# HTTP
-user-agent=\(userAgent)
-
-# Other
-continue=true
-auto-file-renaming=true
-allow-overwrite=false
-disk-cache=64M
+# --- Disk IO ---
 file-allocation=falloc
+disk-cache=64M
+continue=\(continueDownload)
+auto-file-renaming=\(autoRename)
+allow-overwrite=true
+input-file=\(sessionPath)
+save-session=\(sessionPath)
+save-session-interval=60
+force-save=false
+
+# --- Behavior ---
+# Disable automatic torrent following (download the .torrent file itself, don't start the task)
+follow-torrent=false
+
+# --- BitTorrent 策略 ---
+user-agent=\(userAgent)
+peer-agent=\(userAgent)
+peer-id-prefix=-MM1000-
+
+# 2. Encryption: 混合加密模式
+bt-min-crypto-level=\(minCrypto)
+bt-require-crypto=\(requireCrypto)
+
+# 3. DHT 网络
+enable-dht=\(enableDht)
+enable-dht6=\(enableDht)
+dht-file-path=\(dhtFilePath)
+listen-port=\(btPort > 0 ? btPort : 16881)
+dht-listen-port=\(btPort > 0 ? btPort : 16881)
+dht-entry-point=router.bittorrent.com:6881
+dht-entry-point=router.utorrent.com:6881
+dht-entry-point=dht.transmissionbt.com:6881
+dht-entry-point=67.215.246.10:6881
+
+# Advanced
+bt-enable-lpd=\(enableLpd)
+enable-peer-exchange=\(enablePex)
+bt-load-saved-metadata=true
+bt-save-metadata=\(btSaveMetadata)
+bt-detach-seed-only=false
+bt-tracker-connect-timeout=20
+seed-ratio=\(btContinuousSeeding ? "0" : String(format: "%.1f", seedRatio))
+seed-time=\(btContinuousSeeding ? "0" : String(seedTime))
+
+# --- Debug Logging ---
+console-log-level=warn
+log-level=warn
 """
         
-        try? config.write(toFile: configPath.path, atomically: true, encoding: .utf8)
-        print("aria2 config created at: \(configPath.path)")
+        if !combinedTrackers.isEmpty {
+            config += "\n\nbt-tracker=\(combinedTrackers)"
+        }
+        
+        try? config.write(toFile: configPath.path, atomically: true, encoding: String.Encoding.utf8)
+        print("EngineProcess: Config recreated for Enhanced BT Mode.")
         
         return configPath.path
     }
+    
+    private func formatSpeedLimit(_ value: Int, unit: String) -> String {
+        if value <= 0 { return "0" }
+        let isMB = unit.lowercased().hasPrefix("m")
+        return "\(value)\(isMB ? "M" : "K")"
+    }
+        
+
     
     /// Comprehensive scan for port and process anomalies
     private func zombieScan() {
@@ -431,13 +563,13 @@ file-allocation=falloc
     
     private func writePidFile(pid: Int32) {
         let path = getPidFilePath()
-        try? String(pid).write(toFile: path, atomically: true, encoding: .utf8)
+        try? String(pid).write(toFile: path, atomically: true, encoding: String.Encoding.utf8)
     }
     
     
     private func readPidFile() -> Int32? {
         let path = getPidFilePath()
-        if let content = try? String(contentsOfFile: path, encoding: .utf8), let pid = Int32(content.trimmingCharacters(in: .whitespacesAndNewlines)) {
+        if let content = try? String(contentsOfFile: path, encoding: String.Encoding.utf8), let pid = Int32(content.trimmingCharacters(in: .whitespacesAndNewlines)) {
             return pid
         }
         return nil
@@ -535,12 +667,69 @@ file-allocation=falloc
             "--enable-rpc=true",
             "--rpc-save-upload-metadata=true",
             "--check-certificate=false", // Disable strict SSL check to prevent handshake failures
-            "--rpc-allow-origin-all=true"
+            "--rpc-allow-origin-all=true",
+            
+            // [Critical Fix] Disable debug logging to prevent UI freeze caused by log flooding
+            "--console-log-level=warn",
+            "--log-level=warn"
         ]
     }
     
     private static func generateSecret() -> String {
         let letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
         return String((0..<16).map { _ in letters.randomElement()! })
+    }
+    
+    // MARK: - Tracker Automation
+    
+    func updateTrackers() async {
+        Logger.info("EngineProcess: Fetching fresh trackers...")
+        let trackers = await TrackerService.shared.fetchTrackers()
+        guard !trackers.isEmpty else {
+            Logger.info("EngineProcess: No trackers fetched.")
+            return
+        }
+        
+        // Cache for next launch
+        let joined = trackers.joined(separator: ",")
+        UserDefaults.standard.set(joined, forKey: "cachedAutoTrackers")
+        
+        // Update runtime
+        await updateRuntimeTrackers(joinedTrackers: joined)
+    }
+    
+    private func updateRuntimeTrackers(joinedTrackers: String) async {
+        guard isRunning else { return }
+        
+        let url = URL(string: "http://127.0.0.1:\(currentPort)/jsonrpc")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        
+        // Append user manual trackers
+        let userTrackers = UserDefaults.standard.string(forKey: "btTrackers") ?? ""
+        var finalTrackers = joinedTrackers
+        if !userTrackers.isEmpty {
+            finalTrackers += "," + userTrackers
+        }
+        
+        let body: [String: Any] = [
+            "jsonrpc": "2.0",
+            "id": "update-trackers",
+            "method": "aria2.changeGlobalOption",
+            "params": [
+                "token:\(currentSecret)",
+                ["bt-tracker": finalTrackers]
+            ]
+        ]
+        
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        do {
+            let (_, _) = try await URLSession.shared.data(for: request)
+            Logger.info("EngineProcess: Trackers updated via RPC.")
+        } catch {
+            Logger.error("EngineProcess: Failed to update trackers via RPC: \(error)")
+        }
     }
 }

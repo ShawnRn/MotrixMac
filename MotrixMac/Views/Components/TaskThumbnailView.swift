@@ -21,7 +21,7 @@ struct TaskThumbnailView: View {
     var body: some View {
         ZStack {
             // 背景占位图标：始终存在以维持布局稳定
-            FileIconView(fileType: .image)
+            FileIconView(fileType: .image, size: size)
                 .frame(width: size, height: size)
                 .opacity(thumbnail == nil ? 1.0 : 0.0)
             
@@ -67,7 +67,8 @@ struct TaskThumbnailView: View {
              return
         }
 
-        // 放宽限制：只要有有效文件路径且未在加载中，即尝试生成（即使任务未显示为 complete，文件可能已存在）
+        // 只有任务完成后才尝试生成缩略图，避免读取不完整的下载文件导致显示损坏的图片
+        guard task.status == "complete" else { return }
         guard !isLoading else { return }
         
         // Use the first file path if available

@@ -37,6 +37,16 @@ struct AboutView: View {
     ]
     @State private var changelogs: [ChangelogItem] = [
         ChangelogItem(
+            version: "1.1.5",
+            date: "2026-02-06",
+            changes: [
+                "完善了 BitTorrent 下载功能。",
+                "优化了界面细节。",
+                "修复了一些 bugs。",
+                "如果你发现了 bug，请提交 issue 或发邮件给我😃！"
+            ]
+        ),
+        ChangelogItem(
             version: "1.1.4",
             date: "2026-02-02",
             changes: [
@@ -243,6 +253,26 @@ struct AboutView: View {
                 Text("Made with ❤️ by Shawn Rain")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                
+                Button {
+                    let mailto = "mailto:shawnrain.me@gmail.com"
+                    if let url = URL(string: mailto) {
+                        NSWorkspace.shared.open(url)
+                    }
+                } label: {
+                    Text("shawnrain.me@gmail.com")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .onHover { inside in
+                    if inside {
+                        NSCursor.pointingHand.set()
+                    } else {
+                        NSCursor.arrow.set()
+                    }
+                }
+                .padding(.bottom, 2)
                 
                 Text("MIT Copyright (c) 2026-present Shawn Rain")
                     .font(.system(size: 10))

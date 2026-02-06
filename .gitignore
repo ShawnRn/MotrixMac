@@ -1,0 +1,48 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Xcode
+build/
+DerivedData/
+*.xcworkspace
+!default.xcworkspace
+*.xccheckout
+*.xcscheme
+!default.xcscheme
+*.xcuserstate
+project.xcworkspace/
+xcuserdata/
+*.xcodeproj/project.xcworkspace/
+*.xcodeproj/xcuserdata/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.env
+dist/
+
+# Web Extension build artifacts
+chrome-extension-unpacked/
+packages/
+*.zip
+
+# MotrixMac specific
+bin/
+*.log
+tasks.json
+aria2.session
+aria2.conf.local
+aria2.session.local
+aria2.log
+
+# Local Release & Scripts
+releases/
+scripts/
+
+AppIcon/
+
+.agent/

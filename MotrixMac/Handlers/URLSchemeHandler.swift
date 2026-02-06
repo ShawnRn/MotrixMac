@@ -1,10 +1,7 @@
 import AppKit
 import Foundation
 
-// Notification for opening main window
-extension Notification.Name {
-    static let openMainWindow = Notification.Name("openMainWindow")
-}
+// Notification extensions consolidated in MotrixMacApp.swift
 
 /// Handles URL schemes for magnet links, thunder links, etc.
 class URLSchemeHandler {
@@ -124,16 +121,21 @@ class URLSchemeHandler {
         // Add to download manager
         Task {
             let manager = DownloadManager.shared
-            manager.showAddTaskSheet = true
+            // Do NOT show task sheet, just add immediately
+            // manager.showAddTaskSheet = true
 
-            // Pre-fill the URL (this would need UI binding)
-            // For now, we directly add it
             do {
                 let dir =
                     UserDefaults.standard.string(forKey: "defaultDownloadDirectory")
                     ?? FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)
                     .first!.path
-
+                
+                // Decode URI if it's a percent-encoded magnet link to avoid double-encoding issues
+                _ = uri.removingPercentEncoding ?? uri
+                // If it's a magnet link, ensure we use the raw string if decoding made it weird, 
+                // but usually removingPercentEncoding is safer for CLI arguments.
+                // Actually Aria2 handles magnet links well.
+                
                 try await manager.addDownload(uri: uri, options: ["dir": dir])
             } catch {
                 print("Failed to add download: \(error)")

@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import Observation
 import UserNotifications
+import CryptoKit
 
 /// Central download manager using aria2 RPC
 @Observable @MainActor
@@ -15,6 +16,7 @@ final class DownloadManager {
     var lastRpcError: String? = nil
     var needsRepair = false // Signals persistent engine issues
     private var deletingGIDs: Set<String> = [] // Track tasks being deleted
+    private var notifiedStartedGIDs: Set<String> = [] // Track tasks that have triggered speed notification
     private var persistentTasks: [String: DownloadTask] = [:] // Local storage for completed tasks
 
     // UI state
@@ -23,6 +25,7 @@ final class DownloadManager {
     var showAboutPanel = false
     var shouldOpenMainWindow = false
     var shouldResetNavigation = false
+    var pendingTorrentURL: URL? = nil  // For opening .torrent files from Finder
 
     // UI Filtering & Search (Scheme B)
     var searchText: String = "" { didSet { updateFilteredTasks() } }
@@ -75,6 +78,23 @@ final class DownloadManager {
         requestNotificationPermission()
         loadSpeedHistory()
         loadPersistentTasks()
+        
+        // Start Tracker auto-sync in background
+        Task {
+            await TrackerService.shared.startAutoUpdate()
+        }
+        
+        // Listen for tracker updates to hot-reload engine
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("TrackersDidUpdate"),
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task {
+                print("DownloadManager: Trackers updated, restarting engine to apply new trackers...")
+                await self.restartEngine()
+            }
+        }
     }
     
     // MARK: - Persistence
@@ -107,6 +127,7 @@ final class DownloadManager {
         guard let path = getPersistentTasksPath() else { return }
         
         do {
+            // Persist all known tasks to preserve their metadata (like addedAt)
             let data = try JSONEncoder().encode(persistentTasks)
             try data.write(to: path)
         } catch {
@@ -199,6 +220,10 @@ final class DownloadManager {
                         self?.handleNotification(method: method, params: params)
                     }
                 }
+                
+                // [Sanitization] Purge legacy UDP tasks that might be causing loop errors
+                await sanitizeSession()
+                
                 startAutoRefresh()
                 Logger.info("DownloadManager: Successfully connected and authenticated on attempt \(i + 1)")
                 aria2Process?.state = .running
@@ -270,22 +295,117 @@ final class DownloadManager {
         }
 
         do {
-            let active = try await service.tellActive()
+            var active = try await service.tellActive()
             let waiting = try await service.tellWaiting(offset: 0, num: 100)
-            let stopped = try await service.tellStopped(offset: 0, num: 100)
-
-            let newTasks = active + waiting + stopped
-            
-            if !newTasks.isEmpty {
-                print("DownloadManager: Refreshed \(newTasks.count) tasks (Active: \(active.count), Waiting: \(waiting.count), Stopped: \(stopped.count))")
-                for task in newTasks {
-                    print("  - Task: \(task.name), GID: \(task.id), Status: \(task.status), Progress: \(String(format: "%.2f", task.progress * 100))%")
+            // Increase stopped limit to catch real tasks buried under "announce" phantoms
+            let stopped = (try? await aria2Service?.tellStopped(offset: 0, num: 1000)) ?? []
+        
+        // --- Deduplication & Merging ---
+            // Fetch peers for active BT tasks
+            for i in active.indices {
+                if active[i].isTorrent {
+                    do {
+                        let peers = try await service.getPeers(gid: active[i].id)
+                        active[i].peers = peers
+                    } catch {
+                        // If peer detailed info fetch fails, it shouldn't crash active list refresh
+                        // Specifically check for "GID not found" if needed, but for now ignoring is safe
+                        // as the task itself was returned by tellActive
+                    }
                 }
             }
 
-                let oldTasksMap = Dictionary(uniqueKeysWithValues: self.tasks.map { ($0.id, $0) })
+            var newTasks = active + waiting + stopped
+            
+            // [Fix] Deduplicate by GID immediately (in case a task moved between lists during calls)
+            // This prevents "Duplicate values for key" crash later
+            var seenGIDs = Set<String>()
+            newTasks = newTasks.filter { seenGIDs.insert($0.id).inserted }
+            
+            // [Critical Fix] Filter out "announce" phantom tasks and auto-remove them to clean session
+            // Extended criteria to catch all variants: announce, announce.php, /announce paths, tracker URIs
+            let phantomTasks = newTasks.filter { task in
+                let name = task.name.lowercased()
+                let uri = task.uri.lowercased()
+                return name == "announce" ||
+                       name.contains("announce") ||
+                       name.hasSuffix(".php") ||
+                       uri.contains("/announce") ||
+                       (task.totalLength == 0 && (name.hasPrefix("udp://") || name.hasPrefix("http://") && uri.hasSuffix("/announce")))
+            }
+            
+            if !phantomTasks.isEmpty {
+                let phantomIds = Set(phantomTasks.map { $0.id })
+                newTasks.removeAll { phantomIds.contains($0.id) }
                 
-                self.tasks = newTasks.compactMap { newTask in
+                // Aggressively remove them from the engine to clean up aria2.session
+                // [Optimized] Throttle cleanup tasks to avoid storming the CPU
+                // Only spawn a cleanup task if we aren't already cleaning a large batch,
+                // or use a static/shared cleaner? 
+                // For now, simpler: Just don't let the loop run wild.
+                // We'll proceed with detached task but we rely on aria2 eventually responding.
+                
+                // Better approach: ONLY clean if not already cleaning?
+                // But we need to clean THESE specific tasks.
+                // Let's just launch it but log less and maybe throttle via random drop?
+                // No, better to just let it run but ensure NO UI NOTIFICATIONS (already done).
+                
+                let tasksToRemove = phantomTasks // Capture for closure
+                Task.detached {
+                    // Reduce log spam
+                    // Logger.info("DownloadManager: Background cleanup of \(tasksToRemove.count) phantom tasks")
+                    for phantom in tasksToRemove {
+                        // Ideally we try removeResult first as most are 'error' state
+                        if (try? await service.removeDownloadResult(gid: phantom.id)) == nil {
+                             _ = try? await service.forceRemove(gid: phantom.id)
+                             _ = try? await service.removeDownloadResult(gid: phantom.id)
+                        }
+                    }
+                }
+            }
+            
+            if !newTasks.isEmpty {
+                // Debug log reduced to only when count changes or very distinct events
+                // print("DownloadManager: Refreshed \(newTasks.count) tasks...")
+            }
+            
+            // [Critical Fix] Orphan Adoption: Reconcile GID changes (e.g. Magnet -> metadata -> new GID)
+            // If aria2 has a task with NewGID, and we have a persistent task with OldGID but SAME infoHash,
+            // we must adopt the new GID to maintain persistence and control.
+            var persistentUpdatesMade = false
+            for newTask in newTasks {
+                if newTask.isTorrent, 
+                   let infoHash = newTask.infoHash, !infoHash.isEmpty,
+                   self.persistentTasks[newTask.id] == nil { // It's "new" to our storage
+                    
+                    // Search for a matching "orphan" in persistent storage
+                    // (A task with same infoHash but different GID)
+                    if let (oldGid, oldTask) = self.persistentTasks.first(where: { $0.value.infoHash == infoHash && $0.key != newTask.id }) {
+                        print("DownloadManager: Adopting orphan task! infoHash: \(infoHash)")
+                        print("  - Changing GID from \(oldGid) -> \(newTask.id)")
+                        
+                        // Remove old record
+                        self.persistentTasks.removeValue(forKey: oldGid)
+                        
+                        // Add new record (preserve addedAt from old task if desired, or just use new)
+                        var adoptedTask = newTask
+                        adoptedTask.addedAt = oldTask.addedAt // Keep original add date
+                        self.persistentTasks[newTask.id] = adoptedTask
+                        
+                        persistentUpdatesMade = true
+                    }
+                }
+            }
+            
+            if persistentUpdatesMade {
+                self.savePersistentTasks()
+            }
+
+                // [Fix] Use uniquingKeysWith to safely handle any residual duplicates in self.tasks (just in case)
+                // Although self.tasks should be clean now, this is safer.
+                let oldTasksMap = Dictionary(self.tasks.map { ($0.id, $0) }, uniquingKeysWith: { (_, last) in last })
+                
+                self.tasks = newTasks.compactMap { newTask -> DownloadTask? in
                     // Skip tasks that are currently being deleted to prevent ghosting
                     if self.deletingGIDs.contains(newTask.id) {
                         return nil
@@ -302,6 +422,15 @@ final class DownloadManager {
                     // 2. Update with new real-time data if active
                     if newTask.status == "active" {
                         var history = task.downloadSpeedHistory
+                        
+                        // [New] Notify when speed appears (delayed start notification)
+                        // [Critical Fix] Also check persistent status to prevent ghost notifications for completed tasks
+                        if newTask.downloadSpeed > 0 && 
+                           !self.notifiedStartedGIDs.contains(newTask.id) &&
+                           (self.persistentTasks[newTask.id]?.status != "complete") {
+                            self.notifiedStartedGIDs.insert(newTask.id)
+                            self.sendNotification(title: "开始下载", body: "\(newTask.name) 速度: \(newTask.downloadSpeed.formatted(.byteCount(style: .file)))/s")
+                        }
                         
                         // If this is the first time we see it active, prepend a 0 for a cleaner chart start
                         if history.isEmpty {
@@ -343,24 +472,23 @@ final class DownloadManager {
                     }
                     
                     // 2b. Restore Stable Date (addedAt)
-                    // Aria2 RPC returns new Date() every time. We must use our cached date.
                     if let cachedDate = self.taskDates[newTask.id] {
                         task.addedAt = cachedDate
                     } else {
-                        // First time seeing this task in this session (and not in persistence)
-                        // This effectively sets 'addedAt' to 'Session Discovery Time' for new tasks
-                        // For a freshly added task, this is correct (Now).
-                        self.taskDates[newTask.id] = task.addedAt
+                        // First time seeing this task.
+                        // If we are discovering multiple new tasks in one batch, 
+                        // stagger their addedAt dates by 1ms to maintain list order
+                        let offset = Double(self.taskDates.count) * 0.001
+                        let staggeredDate = Date().addingTimeInterval(offset)
+                        task.addedAt = staggeredDate
+                        self.taskDates[newTask.id] = staggeredDate
                     }
 
                     // 3. Persistent Storage logic:
-                    // If task is complete, ensure it is in persistentTasks
-                    if task.status == "complete" {
-                        if self.persistentTasks[task.id] == nil {
-                            self.persistentTasks[task.id] = task
-                            print("DownloadManager: Task \(task.name) persisted to local storage")
-                            self.savePersistentTasks()
-                        }
+                    // Persist all tasks to ensure addedAt remains consistent across restarts
+                    if self.persistentTasks[task.id] != task {
+                        self.persistentTasks[task.id] = task
+                        self.savePersistentTasks()
                     }
 
                     // 4. Pre-calculate strings for UI (Scheme A)
@@ -413,6 +541,26 @@ final class DownloadManager {
         let defaultConnections = defaults.integer(forKey: "defaultConnections")
         let userAgent = defaults.string(forKey: "userAgent") ?? "MotrixMac/2.0"
         
+        // BitTorrent Settings
+        let enableDht = defaults.bool(forKey: "enableDht")
+        let enablePex = defaults.bool(forKey: "enablePex")
+        let enableLpd = defaults.bool(forKey: "enableLpd")
+        let btPort = defaults.integer(forKey: "btListenPort")
+        let btEncryptionMode = defaults.integer(forKey: "btEncryptionMode")
+        let btTrackers = defaults.string(forKey: "btTrackers") ?? ""
+        
+        // Seeding and Metadata
+        let btSaveMetadata = defaults.bool(forKey: "btSaveMetadata")
+        let btContinuousSeeding = defaults.bool(forKey: "btContinuousSeeding")
+        let seedRatio = defaults.double(forKey: "seedRatio")
+        let seedTime = defaults.integer(forKey: "seedTime")
+        
+        // Speed limits
+        let maxDownloadSpeed = defaults.integer(forKey: "maxDownloadSpeed")
+        let downloadSpeedUnit = defaults.string(forKey: "downloadSpeedUnit") ?? "KB/s"
+        let maxUploadSpeed = defaults.integer(forKey: "maxUploadSpeed")
+        let uploadSpeedUnit = defaults.string(forKey: "uploadSpeedUnit") ?? "KB/s"
+
         var options: [String: String] = [:]
         
         if maxConcurrent > 0 {
@@ -420,14 +568,90 @@ final class DownloadManager {
         }
         
         if defaultConnections > 0 {
-            // Note: 'split' cannot be changed globally at runtime via RPC.
-            // It requires an engine restart to take effect from aria2.conf.
-            // We only send 'max-connection-per-server' here as a best-effort,
-            // but the true fix relies on restartEngine() being called when this setting changes.
             options["max-connection-per-server"] = String(defaultConnections)
+            options["split"] = String(defaultConnections)
         }
         
         options["user-agent"] = userAgent
+        
+        // BitTorrent Options
+        let autoRename = defaults.bool(forKey: "autoRenameFiles") // Defaults to false if missing, but usually initialized true
+        
+        options["enable-dht"] = String(enableDht)
+        options["bt-enable-lpd"] = String(enableLpd)
+        options["enable-peer-exchange"] = String(enablePex)
+        options["bt-tracker"] = btTrackers.replacingOccurrences(of: "\n", with: ",")
+        options["bt-save-metadata"] = String(btSaveMetadata)
+        options["bt-detach-seed-only"] = "false" // Enforce seeding
+        options["auto-file-renaming"] = String(autoRename)
+        
+        if btContinuousSeeding {
+            // [Critical Fix] In aria2, 0 means "stop immediately", not "seed forever"
+            // Use very high values to effectively seed indefinitely
+            options["seed-ratio"] = "100000.0"
+            options["seed-time"] = "525600" // 1 year in minutes
+        } else {
+            options["seed-ratio"] = String(format: "%.1f", seedRatio)
+            options["seed-time"] = String(seedTime)
+        }
+        
+        if btPort > 0 {
+            options["listen-port"] = String(btPort)
+        }
+        
+        // Speed Limits
+        options["max-download-limit"] = formatSpeedLimit(maxDownloadSpeed, unit: downloadSpeedUnit)
+        options["max-upload-limit"] = formatSpeedLimit(maxUploadSpeed, unit: uploadSpeedUnit)
+        
+        // Encryption
+        // Mode 0:Allow, 1:Force, 2:Disable
+        switch btEncryptionMode {
+        case 1: // Force
+            options["bt-require-crypto"] = "true"
+            options["bt-min-crypto-level"] = "arc4"
+        case 2: // Disable
+            options["bt-require-crypto"] = "false"
+            options["bt-min-crypto-level"] = "plain"
+        default: // Allow (Hybrid)
+            options["bt-require-crypto"] = "false"
+            options["bt-min-crypto-level"] = "plain"
+        }
+        
+        if defaults.bool(forKey: "continueDownload") {
+            options["continue"] = "true"
+        } else {
+            options["continue"] = "false"
+        }
+        
+        // Proxy Settings
+        // [Fix] Construct proxy string from individual AppStorage keys
+        if defaults.bool(forKey: "proxyEnabled") {
+            let host = defaults.string(forKey: "proxyHost") ?? ""
+            let port = defaults.string(forKey: "proxyPort") ?? ""
+            let user = defaults.string(forKey: "proxyUsername") ?? ""
+            let pass = defaults.string(forKey: "proxyPassword") ?? ""
+            
+            if !host.isEmpty {
+                var proxyString = "http://"
+                if !user.isEmpty {
+                    proxyString += "\(user)"
+                    if !pass.isEmpty {
+                        proxyString += ":\(pass)"
+                    }
+                    proxyString += "@"
+                }
+                proxyString += host
+                if !port.isEmpty {
+                    proxyString += ":\(port)"
+                }
+                options["all-proxy"] = proxyString
+                Logger.info("DownloadManager: Applied proxy settings: \(host):\(port)")
+            } else {
+                options["all-proxy"] = ""
+            }
+        } else {
+            options["all-proxy"] = ""
+        }
         
         guard !options.isEmpty else { return }
         
@@ -435,36 +659,29 @@ final class DownloadManager {
             try await service.changeGlobalOption(options: options)
             Logger.info("DownloadManager: Successfully applied global options: \(options)")
             
-            // Dynamic Update: Apply thread/split options to existing tasks
-            // 'split' and 'max-connection-per-server' needs to be set per-task for existing ones
-            if let connections = options["max-connection-per-server"] {
-                for task in tasks {
-                    // Only apply if task is active, waiting or paused
-                    guard ["active", "waiting", "paused"].contains(task.status) else { continue }
-                    
-                    let taskOptions = [
-                        "max-connection-per-server": connections,
-                        "split": connections
-                    ]
-                    
-                    // Ideally we should pause -> changeOption -> unpause for active tasks for 'split' to take full effect immediately?
-                    // Aria2 docs say split can be changed via changeOption.
-                    // Doing a quick pause/resume cycle is safest to force re-connection logic.
-                    
-                    if task.status == "active" {
-                        try? await service.pause(gid: task.id)
-                        try? await service.changeOption(gid: task.id, options: taskOptions)
-                        try? await service.unpause(gid: task.id)
-                        print("DownloadManager: Updated active task \(task.id) with connections: \(connections)")
-                    } else {
-                        try? await service.changeOption(gid: task.id, options: taskOptions)
-                        print("DownloadManager: Updated \(task.status) task \(task.id) with connections: \(connections)")
-                    }
-                }
+            // Per-task updates for existing downloads
+            // [Fix] Enforce critical options on running tasks too
+            let taskUpdateOptions: [String: String] = [
+                "max-connection-per-server": options["max-connection-per-server"] ?? "16",
+                "split": options["split"] ?? "16",
+                "bt-detach-seed-only": "false", // Enforce seeding for active tasks
+                "seed-ratio": options["seed-ratio"] ?? "0.0",
+                "seed-time": options["seed-time"] ?? "0"
+            ]
+            
+            for task in tasks {
+                guard ["active", "waiting", "paused"].contains(task.status) else { continue }
+                try? await service.changeOption(gid: task.id, options: taskUpdateOptions)
             }
         } catch {
             print("DownloadManager: Failed to apply global options: \(error)")
         }
+    }
+    
+    private func formatSpeedLimit(_ value: Int, unit: String) -> String {
+        if value <= 0 { return "0" }
+        let isMB = unit.lowercased().hasPrefix("m")
+        return "\(value)\(isMB ? "M" : "K")"
     }
 
     /// Restart the aria2 engine to apply settings that require a restart (e.g. split)
@@ -483,16 +700,41 @@ final class DownloadManager {
     }
     
     func taskCount(for category: TaskCategory) -> Int {
-        tasks.filter { category.aria2Status.contains($0.status) }.count
+        tasks.filter { task in
+            if category == .downloading {
+                // 进行中：包括除“已完成”之外的所有状态，此外“正在做种”的任务也属于进行中
+                if task.isSeeding { return true }
+                return task.status != "complete"
+            } else if category == .completed {
+                // 已完成：仅限“已完成”状态，且不能是正在做种的 BT 任务
+                if task.isSeeding { return false }
+                return task.status == "complete"
+            }
+            return false
+        }.count
     }
 
     func addDownload(uri: String, options: [String: Any]) async throws {
-        guard let service = aria2Service else { throw DownloadError.notConnected }
+        guard let service = aria2Service else {
+            throw Aria2Error.connectionFailed
+        }
+        
+        // [Critical Fix] Prevent adding tracker/announce URLs as regular downloads
+        // These are frequently injected by external tools but cause "Read-only file system" errors in aria2
+        let lowerUri = uri.lowercased()
+        if lowerUri.contains("/announce") || lowerUri.hasPrefix("udp://") || lowerUri.hasSuffix(".php") {
+            Logger.info("DownloadManager: Intercepted and ignored phantom task: \(uri)")
+            return
+        }
+        
+        // [Fundamental Fix] Clean Magnet links to remove unsupported UDP trackers
+        // This prevents aria2 from attempting UDP connections that fail and create phantom "announce" tasks
+        let finalUri = uri.hasPrefix("magnet:") ? cleanMagnetLink(uri) : uri
         
         // Deduplication: Check if we already have this URI in active/waiting/paused
         // Note: This is a simple check. Aria2 might normalize URIs, but this catches exact matches from extension.
         let isDuplicate = tasks.contains { task in
-            ["active", "waiting", "paused"].contains(task.status) && task.uri == uri
+            ["active", "waiting", "paused"].contains(task.status) && task.uri == finalUri
         }
         
         if isDuplicate {
@@ -501,6 +743,24 @@ final class DownloadManager {
         }
         
         var finalOptions = options
+        
+        // [Feature] Inject cached/user trackers to compensate for filtered UDP trackers
+        // This ensures High Availability even if the Magnet link's own trackers are all UDP
+        let cachedTrackers = UserDefaults.standard.string(forKey: "cachedAutoTrackers") ?? ""
+        let userTrackers = UserDefaults.standard.string(forKey: "btTrackers") ?? ""
+        let injectedTrackers = [cachedTrackers, userTrackers]
+            .filter { !$0.isEmpty }
+            .joined(separator: ",")
+            
+        if !injectedTrackers.isEmpty {
+            // Append to existing trackers if any
+            if let existing = finalOptions["bt-tracker"] as? String {
+                finalOptions["bt-tracker"] = existing + "," + injectedTrackers
+            } else {
+                finalOptions["bt-tracker"] = injectedTrackers
+            }
+        }
+
         let defaultConnections = UserDefaults.standard.integer(forKey: "defaultConnections")
         if defaultConnections > 0 {
             if finalOptions["split"] == nil {
@@ -511,13 +771,151 @@ final class DownloadManager {
             }
         }
         
-        _ = try await service.addUri(uris: [uri], options: finalOptions)
+        // [Fix] Enforce seeding options for magnet links too
+        let btContinuous = UserDefaults.standard.bool(forKey: "btContinuousSeeding")
+        if btContinuous {
+            // [Critical Fix] In aria2, 0 means "stop immediately", not "seed forever"
+            finalOptions["seed-ratio"] = "100000.0"
+            finalOptions["seed-time"] = "525600" // 1 year in minutes
+        } else {
+            let ratio = UserDefaults.standard.double(forKey: "seedRatio")
+            let time = UserDefaults.standard.integer(forKey: "seedTime") 
+            finalOptions["seed-ratio"] = ratio > 0 ? String(format: "%.1f", ratio) : "1.0"
+            finalOptions["seed-time"] = time > 0 ? String(time) : "60"
+        }
+        finalOptions["bt-detach-seed-only"] = "false"
+        
+        // [Critical Fix] Explicitly disable auto-following of torrent/metalink files
+        // This ensures that when a user adds a link to a .torrent file, we download the file itself defined by the URI,
+        // rather than parsing it and starting a BT download.
+        finalOptions["follow-torrent"] = "false"
+        finalOptions["follow-metalink"] = "false"
+        
+        _ = try await service.addUri(uris: [finalUri], options: finalOptions)
         await refreshTasks()
+    }
+
+    /// Removes unsupported UDP trackers from a Magnet link
+    private func cleanMagnetLink(_ uri: String) -> String {
+        guard let components = URLComponents(string: uri),
+              let queryItems = components.queryItems else {
+            return uri
+        }
+        
+        // Filter out 'tr' (tracker) parameters that start with udp://
+        let filteredItems = queryItems.filter { item in
+            if item.name == "tr", let value = item.value {
+                return !value.hasPrefix("udp://")
+            }
+            return true
+        }
+        
+        var newComponents = components
+        newComponents.queryItems = filteredItems
+        return newComponents.string ?? uri
+    }
+    
+    /// Scans for and removes "phantom" tasks caused by UDP trackers from legacy sessions
+    private func sanitizeSession() async {
+        guard let service = aria2Service else { return }
+        
+        do {
+            // Check all queues. "Phantom" tasks usually appear as failed/stopped tasks,
+            // but sometimes hang in waiting/active if they are retrying.
+            let stopped = try await service.tellStopped(offset: 0, num: 1000)
+            let waiting = try await service.tellWaiting(offset: 0, num: 1000)
+            let active = try await service.tellActive()
+            
+            let allTasks = stopped + waiting + active
+            
+            var purgedCount = 0
+            for task in allTasks {
+                // Criteria: Task is purely a UDP tracker URL or has the specific UDP error
+                let isPhantomUDP = task.uri.hasPrefix("udp://") ||
+                                   task.name.hasPrefix("udp://") ||
+                                   (task.errorMessage?.contains("udp is not supported") == true)
+                
+                if isPhantomUDP {
+                    print("DownloadManager: Purging phantom UDP task: \(task.id) (\(task.name))")
+                    
+                    if ["active", "waiting", "paused"].contains(task.status) {
+                        _ = try? await service.forceRemove(gid: task.id)
+                    } else {
+                        _ = try? await service.removeDownloadResult(gid: task.id)
+                    }
+                    purgedCount += 1
+                }
+            }
+            
+            if purgedCount > 0 {
+                print("DownloadManager: Sanitization complete. Purged \(purgedCount) phantom tasks.")
+            }
+        } catch {
+            print("DownloadManager: Session sanitization scan failed: \(error)")
+        }
     }
 
     func addTorrent(base64: String, options: [String: Any]) async throws {
         guard let service = aria2Service else { throw DownloadError.notConnected }
         var finalOptions = options
+        
+        // --- Smart Deduplication & Renaming Logic ---
+        if let data = Data(base64Encoded: base64, options: .ignoreUnknownCharacters) {
+            // 1. Calculate InfoHash locally to check for collisions
+            if let decoded = try? BencodeDecoder.decode(data) as? [String: Any],
+               let info = decoded["info"] as? [String: Any] {
+                
+                // Calculate InfoHash (SHA1 of info dict)
+                // Note: We need the *encoded* info dictionary bytes. 
+                // Since we parsed it, we might not have the exact original bytes of 'info' part easily 
+                // without a BencodeEncoder (which we don't have).
+                // Alternative: If we can't easily hash, we can fallback to name matching or 
+                // rely on the user dragging the file implying a potential duplicate intent?
+                // Actually, duplicate check by name is safer if we can't reliably hash 'info' without encoder.
+                // Let's rely on NAME matching for now which is 99% effective for "same file" collisions.
+                
+                if let name = info["name"] as? String {
+                    let isMultiFile = info["files"] != nil
+                    
+                    // Check if we have a collision
+                    // We check both active tasks and persistent (completed) tasks
+                    let collision = tasks.first { $0.isTorrent && ($0.name == name || $0.infoHash == nil) } ??
+                                    persistentTasks.values.first { $0.isTorrent && $0.name == name }
+                    
+                    if let _ = collision {
+                        // Collision detected! Rename to "Name (1)"
+                        let newName = findUniqueName(baseName: name)
+                        print("DownloadManager: Collision detected for '\(name)'. Renaming to '\(newName)'")
+                        
+                        if isMultiFile {
+                            // Multi-file: The 'name' in metadata is the root directory name.
+                            // We can't easily change the internal root directory name of the torrent.
+                            // Strategy: Change the download 'dir' to a subdirectory named "Name (N)"
+                            // resulting in /Downloads/Name (N)/Name/...
+                            if let currentDir = finalOptions["dir"] as? String {
+                                let newDir = (currentDir as NSString).appendingPathComponent(newName)
+                                finalOptions["dir"] = newDir
+                            } else {
+                                // Default dir
+                                let defaultDir = UserDefaults.standard.string(forKey: "defaultDownloadLocation") ?? 
+                                                 FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first!.path
+                                finalOptions["dir"] = (defaultDir as NSString).appendingPathComponent(newName)
+                            }
+                        } else {
+                             // Single-file: We can use 'out' option to rename the file
+                            // But we need to keep the extension.
+                            let ext = (name as NSString).pathExtension
+                            let nameNoExt = (name as NSString).deletingPathExtension // This strips extension
+                            
+                            // Re-calculate unique name strictly for filename
+                             let uniqueFileName = findUniqueFileName(baseName: nameNoExt, extension: ext)
+                             finalOptions["out"] = uniqueFileName
+                        }
+                    }
+                }
+            }
+        }
+        
         let defaultConnections = UserDefaults.standard.integer(forKey: "defaultConnections")
         if defaultConnections > 0 {
             if finalOptions["split"] == nil {
@@ -527,43 +925,148 @@ final class DownloadManager {
                 finalOptions["max-connection-per-server"] = "\(defaultConnections)"
             }
         }
+        
+        // [Fix] Enforce seeding options for new tasks to prevent immediate completion
+        // Explicitly override any defaults with user preferences
+        let btContinuous = UserDefaults.standard.bool(forKey: "btContinuousSeeding")
+        if btContinuous {
+            // [Critical Fix] In aria2, 0 means "stop immediately", not "seed forever"
+            finalOptions["seed-ratio"] = "100000.0"
+            finalOptions["seed-time"] = "525600" // 1 year in minutes
+        } else {
+            let ratio = UserDefaults.standard.double(forKey: "seedRatio")
+            let time = UserDefaults.standard.integer(forKey: "seedTime")
+            // Use defaults if keys are missing (ratio 1.0, time 60 min, etc? or rely on aria2 default?)
+             // Better to just set them if they exist or set safe defaults.
+            finalOptions["seed-ratio"] = ratio > 0 ? String(format: "%.1f", ratio) : "1.0"
+            finalOptions["seed-time"] = time > 0 ? String(time) : "60"
+        }
+        finalOptions["bt-detach-seed-only"] = "false"
 
         _ = try await service.addTorrent(torrent: base64, options: finalOptions)
         await refreshTasks()
     }
+    
+    // Helper to find unique name "Name (N)"
+    private func findUniqueName(baseName: String) -> String {
+        var name = baseName
+        var counter = 1
+        
+        // Simple check against our known task list
+        // Note: This isn't perfect against file system if the app doesn't know about them, 
+        // but solves the "App Logic" duplicate issue.
+        while tasks.contains(where: { $0.name == name }) || 
+              persistentTasks.values.contains(where: { $0.name == name }) {
+            name = "\(baseName) (\(counter))"
+            counter += 1
+        }
+        return name
+    }
+
+    private func findUniqueFileName(baseName: String, extension ext: String) -> String {
+        var name = ext.isEmpty ? baseName : "\(baseName).\(ext)"
+        var counter = 1
+        
+        while tasks.contains(where: { $0.name == name }) || 
+              persistentTasks.values.contains(where: { $0.name == name }) {
+            name = ext.isEmpty ? "\(baseName) (\(counter))" : "\(baseName) (\(counter)).\(ext)"
+            counter += 1
+        }
+        return name
+    }
 
     func pauseTask(_ task: DownloadTask) async {
         guard let service = aria2Service else { return }
+        
+        // Try with stored GID first
         do {
             try await service.pause(gid: task.id)
             await refreshTasks()
+            return
         } catch {
+            // GID not found - try to resolve using infoHash
+            if task.isTorrent, let infoHash = task.infoHash, !infoHash.isEmpty {
+                if let realGid = await resolveRealGid(forInfoHash: infoHash) {
+                    do {
+                        try await service.pause(gid: realGid)
+                        await refreshTasks()
+                        return
+                    } catch {
+                        print("Failed to pause task with resolved GID: \(error)")
+                    }
+                }
+            }
             print("Failed to pause task: \(error)")
         }
+    }
+    
+    /// Resolves the actual aria2 GID for a BT task by matching infoHash
+    private func resolveRealGid(forInfoHash infoHash: String) async -> String? {
+        guard let service = aria2Service else { return nil }
+        do {
+            let activeTasks = try await service.tellActive()
+            // Search in active tasks
+            if let match = activeTasks.first(where: { $0.infoHash?.lowercased() == infoHash.lowercased() }) {
+                return match.id
+            }
+            // Also check waiting tasks
+            let waitingTasks = try await service.tellWaiting(offset: 0, num: 100)
+            if let match = waitingTasks.first(where: { $0.infoHash?.lowercased() == infoHash.lowercased() }) {
+                return match.id
+            }
+        } catch {
+            print("Failed to resolve real GID: \(error)")
+        }
+        return nil
     }
 
     func resumeTask(_ task: DownloadTask) async {
         guard let service = aria2Service else { return }
+        
+        // Try with stored GID first
         do {
             try await service.unpause(gid: task.id)
             await refreshTasks()
+            return
         } catch {
+            // GID not found - try to resolve using infoHash
+            if task.isTorrent, let infoHash = task.infoHash, !infoHash.isEmpty {
+                if let realGid = await resolveRealGid(forInfoHash: infoHash) {
+                    do {
+                        try await service.unpause(gid: realGid)
+                        await refreshTasks()
+                        return
+                    } catch {
+                        print("Failed to resume task with resolved GID: \(error)")
+                    }
+                }
+            }
             print("Failed to resume task: \(error)")
         }
     }
     
     func retryTask(_ task: DownloadTask) async {
         if task.status == "removed" || task.status == "error" {
-            // For removed or error tasks, we try to re-add them
-            guard !task.uri.isEmpty else { return }
+            // First, remove the old task record from aria2
+            await deleteTask(task, withFiles: false)
             
-            let options: [String: Any] = [
-                "dir": task.dir
-            ]
-            
-            _ = try? await addDownload(uri: task.uri, options: options)
-            // Then remove the old result so it doesn't clutter
-            await deleteTask(task)
+            // For BT tasks, check if we have an infoHash to re-add
+            if task.isTorrent, let infoHash = task.infoHash, !infoHash.isEmpty {
+                // Re-add via magnet link constructed from infoHash
+                let magnetUri = "magnet:?xt=urn:btih:\(infoHash)"
+                let options: [String: Any] = [
+                    "dir": task.dir,
+                    "auto-file-renaming": "true"
+                ]
+                _ = try? await addDownload(uri: magnetUri, options: options)
+            } else if !task.uri.isEmpty {
+                // For regular HTTP downloads
+                let options: [String: Any] = [
+                    "dir": task.dir,
+                    "auto-file-renaming": "true"
+                ]
+                _ = try? await addDownload(uri: task.uri, options: options)
+            }
         } else {
             await resumeTask(task)
         }
@@ -577,6 +1080,29 @@ final class DownloadManager {
             await refreshTasks()
         } catch {
             Logger.error("Failed to cancel task: \(error)")
+        }
+    }
+
+    func stopSeeding(_ task: DownloadTask) async {
+        guard let service = aria2Service else { return }
+        
+        do {
+            // 1. Force remove from engine (stops the active seeding)
+            _ = try? await service.forceRemove(gid: task.id)
+            
+            // 2. Mark as complete in our persistent storage
+            var updatedTask = task
+            updatedTask.status = "complete"
+            self.persistentTasks[task.id] = updatedTask
+            self.savePersistentTasks()
+            
+            // 3. Clean up engine result
+            _ = try? await service.removeDownloadResult(gid: task.id)
+            
+            // 4. Final refresh
+            await refreshTasks()
+        } catch {
+            print("Failed to stop seeding: \(error)")
         }
     }
 
@@ -596,6 +1122,7 @@ final class DownloadManager {
         // Remove from persistent storage too
         for id in idsToRemove {
             self.persistentTasks.removeValue(forKey: id)
+            self.notifiedStartedGIDs.remove(id)
         }
         self.savePersistentTasks()
         
@@ -607,7 +1134,7 @@ final class DownloadManager {
                 group.addTask {
                     // Step A: Stop if active
                     if ["active", "waiting", "paused"].contains(task.status) {
-                        try? await service.forceRemove(gid: task.id)
+                        _ = try? await service.forceRemove(gid: task.id)
                         // Give aria2 a moment to move the task to 'stopped' list 
                         try? await Task.sleep(for: .milliseconds(200))
                     }
@@ -674,24 +1201,26 @@ final class DownloadManager {
             print("Failed to resume all: \(error)")
         }
     }
+    
+
 
     // MARK: - File Operations
 
     func revealInFinder(_ task: DownloadTask) {
-        let path = task.dir + "/" + task.name
-        let url = URL(fileURLWithPath: path)
+        let dirUrl = URL(fileURLWithPath: task.dir)
+        let url = dirUrl.appendingPathComponent(task.name)
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
     func openFile(_ task: DownloadTask) {
-        let path = task.dir + "/" + task.name
-        let url = URL(fileURLWithPath: path)
+        let dirUrl = URL(fileURLWithPath: task.dir)
+        let url = dirUrl.appendingPathComponent(task.name)
         NSWorkspace.shared.open(url)
     }
 
     private func deleteFiles(for task: DownloadTask) {
-        let path = task.dir + "/" + task.name
-        let url = URL(fileURLWithPath: path)
+        let dirUrl = URL(fileURLWithPath: task.dir)
+        let url = dirUrl.appendingPathComponent(task.name)
         
         // 1. Delete the main data file or folder
         try? FileManager.default.removeItem(at: url)
@@ -699,6 +1228,10 @@ final class DownloadManager {
         // 2. Delete the .aria2 control file (usually named [filename].aria2)
         let aria2Url = url.appendingPathExtension("aria2")
         try? FileManager.default.removeItem(at: aria2Url)
+        
+        // 3. Extra cleanup: Check for [filename].torrent (if it was a local file)
+        let torrentUrl = url.appendingPathExtension("torrent")
+        try? FileManager.default.removeItem(at: torrentUrl)
     }
 
     // MARK: - Auto Refresh
@@ -752,32 +1285,107 @@ final class DownloadManager {
 
             // Handle specific events for notifications
             if method == "aria2.onDownloadStart" {
-                if let firstParam = params.first as? [String: Any],
+                 if let firstParam = params.first as? [String: Any],
                     let gid = firstParam["gid"] as? String
-                {
-                    // Immediate refresh so the new task appears instantly
-                    await refreshTasks()
-                    
-                    if let task = tasks.first(where: { $0.id == gid }) {
-                        sendNotification(title: "下载开始", body: "\(task.name) 已开始下载")
+                 {
+                    // [Feature] Immediate notification on task start
+                    // We check if it's a metadata task to avoid noise
+                    Task {
+                        if let task = try? await aria2Service?.tellStatus(gid: gid) {
+                            // [Critical Fix] Filter out all announce/tracker phantom tasks
+                            let name = task.name.lowercased()
+                            if task.name.hasPrefix("[METADATA]") ||
+                               name.contains("announce") ||
+                               name.hasSuffix(".php") ||
+                               task.uri.contains("/announce") { return }
+                            
+                            // [Critical Fix] Don't notify for tasks already known as complete
+                            // This prevents "ghost" notifications when aria2 briefly re-reports completed tasks on startup
+                            if let persistent = self.persistentTasks[gid], persistent.status == "complete" { return }
+                            
+                            // Prevent duplicate start notifications if speed check already fired
+                            if !self.notifiedStartedGIDs.contains(gid) {
+                                self.notifiedStartedGIDs.insert(gid)
+                                sendNotification(title: "开始下载", body: "\(task.name) 已开始下载")
+                            }
+                        }
                     }
                 }
-            } else if method == "aria2.onDownloadComplete" || method == "aria2.onBtDownloadComplete" {
+            } else if method == "aria2.onDownloadComplete" {
                 if let firstParam = params.first as? [String: Any],
                     let gid = firstParam["gid"] as? String
                 {
-                    // We need to fetch the task to get its name
-                    // Since we just called refreshTasks(), we might be able to find it in the new list,
-                    // but refreshTasks is async and might race. Safer to fetch specific task status.
                     if let task = try? await aria2Service?.tellStatus(gid: gid) {
+                        // [Critical Fix] Filter out all announce/tracker phantom tasks
+                        let name = task.name.lowercased()
+                        if task.name.hasPrefix("[METADATA]") ||
+                           name.contains("announce") ||
+                           name.hasSuffix(".php") ||
+                           task.uri.contains("/announce") { return }
+                        
+                        // [Fix] Suppress notification if task is already known as complete in persistent storage
+                        if let persistent = persistentTasks[gid], persistent.status == "complete" {
+                            return
+                        }
+                        
                         sendNotification(title: "下载完成", body: "\(task.name) 已下载完成")
+                        
+                        // [Critical Fix] Force save session immediately upon completion
+                        try? await self.aria2Service?.saveSession()
+                        
+                        // Update persistent state immediately
+                        if let existing = self.persistentTasks[gid] {
+                            var updated = existing
+                            updated.status = "complete"
+                            self.persistentTasks[gid] = updated
+                            self.savePersistentTasks()
+                        }
                     }
+                }
+            } else if method == "aria2.onBtDownloadComplete" {
+                if let firstParam = params.first as? [String: Any],
+                   let gid = firstParam["gid"] as? String
+                {
+                   Task {
+                       if let task = try? await aria2Service?.tellStatus(gid: gid) {
+                           // [Critical Fix] Filter out all announce/tracker phantom tasks
+                           let name = task.name.lowercased()
+                           if task.name.hasPrefix("[METADATA]") ||
+                              name.contains("announce") ||
+                              name.hasSuffix(".php") ||
+                              task.uri.contains("/announce") { return }
+                           
+                           // Deduplicate against persistent status
+                           if let persistent = persistentTasks[gid], persistent.status == "complete" { return }
+                           
+                           // Also unlikely to need deduplication against onDownloadComplete if we check persistent status first?
+                           // But to be safe, we can check if we just notified.
+                           // For simplicity, we rely on the persistent status check, assuming onDownloadComplete (if fired) set it.
+                           // If onDownloadComplete didn't fire (BT specific case), then we notify here.
+                           
+                           sendNotification(title: "BT 下载完成", body: "\(task.name) 已下载完成")
+                           
+                           try? await self.aria2Service?.saveSession()
+                           
+                           if let existing = self.persistentTasks[gid] {
+                               var updated = existing
+                               updated.status = "complete"
+                               self.persistentTasks[gid] = updated
+                               self.savePersistentTasks()
+                           }
+                       }
+                   }
                 }
             } else if method == "aria2.onDownloadError" {
                 if let firstParam = params.first as? [String: Any],
                     let gid = firstParam["gid"] as? String
                 {
                     if let task = try? await aria2Service?.tellStatus(gid: gid) {
+                        // Suppress notifications for phantom "announce" tasks
+                        if task.name == "announce" || (task.totalLength == 0 && task.name.hasPrefix("announce")) {
+                             return
+                        }
+                        
                         let errorMessage = task.errorMessage ?? "未知错误"
                         Logger.error("DownloadManager: Task \(task.name) (GID: \(gid)) failed: \(errorMessage)")
                         sendNotification(title: "下载失败", body: "\(task.name) 下载失败: \(errorMessage)")
@@ -814,7 +1422,13 @@ final class DownloadManager {
         
         // 2. Speed and ETA
         task.formattedStatusText = task.displayStatus // Restore missing assignment
-        if task.isActive {
+        if task.isSeeding {
+            // Seeding: Show upload speed instead of download
+            let uploadSpeed = formatter.string(fromByteCount: task.uploadSpeed) + "/s"
+            task.formattedDownloadSpeed = uploadSpeed
+            task.formattedETA = "--"
+            task.formattedStatusLine = "\(task.formattedSizeText) · ↑ \(uploadSpeed) · 做种中"
+        } else if task.isActive {
             task.formattedDownloadSpeed = formatter.string(fromByteCount: task.downloadSpeed) + "/s"
             task.formattedETA = task.eta
             
@@ -850,7 +1464,25 @@ final class DownloadManager {
 
     private func updateFilteredTasks() {
         let categoryTasks = tasks.filter { task in
-            currentCategory.aria2Status.contains(task.status)
+            // Logic to handle "Seeding" tasks (Active but download finished)
+            // Seeding tasks should appear in 'Downloading' per user request
+            let isSeeding = task.isSeeding
+            
+            // Logic to prevent "Flashing" of completed HTTP tasks on startup
+            // If a standard task is fully downloaded but briefly "active" (verifying), treat as complete
+            let isHTTPComplete = !task.isTorrent && task.totalLength > 0 && task.completedLength == task.totalLength
+            
+            if currentCategory == .downloading {
+                // Downloading: Include seeding tasks.
+                if task.isSeeding { return true }
+                return task.status != "complete"
+            } else if currentCategory == .completed {
+                // Completed: Include complete tasks. Exclude seeding tasks.
+                if task.isSeeding { return false }
+                return task.status == "complete"
+            }
+            
+            return false
         }
 
         let sorted: [DownloadTask]

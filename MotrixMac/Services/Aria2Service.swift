@@ -9,6 +9,14 @@ actor Aria2Service {
     private var socket: WebSocket?
     private var requestId = 0
     private var pendingRequests: [String: CheckedContinuation<Any, Error>] = [:]
+    private var connectTimeoutTask: Task<Void, Never>? // Directive 4: Cancellation Management
+
+    deinit {
+        // Directive 1 & 4: Deinit Safety
+        connectTimeoutTask?.cancel()
+        socket?.onEvent = nil
+        socket?.disconnect()
+    }
 
     init(host: String, port: Int, secret: String) {
         self.host = host
@@ -19,6 +27,13 @@ actor Aria2Service {
     // MARK: - Connection
 
     func connect() async throws {
+        // Directive 3: Lifecycle Management
+        if let existingSocket = socket {
+            existingSocket.onEvent = nil
+            existingSocket.disconnect()
+            socket = nil
+        }
+        
         let urlString = "ws://\(host):\(port)/jsonrpc"
         guard let url = URL(string: urlString) else {
             throw Aria2Error.invalidURL
@@ -29,21 +44,23 @@ actor Aria2Service {
 
         return try await withCheckedThrowingContinuation { continuation in
             self.connectContinuation = continuation
-            socket = WebSocket(request: request)
+            let newSocket = WebSocket(request: request) // Use local var first
+            socket = newSocket
 
-            socket?.onEvent = { [weak self] event in
-                Task {
+            // Directive 2: Enforce Double-Weak Capture
+            newSocket.onEvent = { [weak self] event in
+                Task { [weak self] in // <--- CRITICAL: Double weak capture
                     await self?.handleEvent(event)
                 }
             }
             
-            // Add connection timeout
-            Task { [weak self] in
+            // Directive 4: Store timeout task
+            connectTimeoutTask = Task { [weak self] in
                 try? await Task.sleep(nanoseconds: 5 * 1_000_000_000) // 5s timeout
                 await self?.timeoutConnection()
             }
 
-            socket?.connect()
+            newSocket.connect()
         }
     }
     
@@ -57,6 +74,11 @@ actor Aria2Service {
     }
 
     func disconnect() async {
+        // Directive 4: Cancel timeout
+        connectTimeoutTask?.cancel()
+        connectTimeoutTask = nil
+        
+        socket?.onEvent = nil
         socket?.disconnect()
         socket = nil
     }
@@ -66,6 +88,10 @@ actor Aria2Service {
     private func handleEvent(_ event: WebSocketEvent) {
         switch event {
         case .connected:
+            // Directive 4: Cancel timeout on success
+            connectTimeoutTask?.cancel()
+            connectTimeoutTask = nil
+            
             if let continuation = connectContinuation {
                 self.connectContinuation = nil
                 continuation.resume()
@@ -209,9 +235,7 @@ actor Aria2Service {
         _ = try await call(method: "aria2.remove", params: [gid])
     }
 
-    func forceRemove(gid: String) async throws {
-        _ = try await call(method: "aria2.forceRemove", params: [gid])
-    }
+
 
     func pause(gid: String) async throws {
         _ = try await call(method: "aria2.pause", params: [gid])
@@ -289,6 +313,51 @@ actor Aria2Service {
         )
     }
 
+    func getPeers(gid: String) async throws -> [TaskPeer] {
+        let result = try await call(method: "aria2.getPeers", params: [gid])
+        guard let array = result as? [[String: Any]] else {
+            return []
+        }
+        return array.compactMap { dict -> TaskPeer? in
+            guard let ip = dict["ip"] as? String else { return nil }
+            let port = Int(dict["port"] as? String ?? "0") ?? 0
+            
+            // Handle client string: try to URL decode if it contains %
+            // Handle client string using PeerIDParser which handles URL decoding and Azureus-style parsing
+            var client = dict["peerId"] as? String ?? "Unknown"
+            client = PeerIDParser.parse(peerID: client)
+            
+            let downloadSpeed = Int64(dict["downloadSpeed"] as? String ?? "0") ?? 0
+            let uploadSpeed = Int64(dict["uploadSpeed"] as? String ?? "0") ?? 0
+            let seeder = (dict["seeder"] as? String ?? "false") == "true"
+            let amChoking = (dict["amChoking"] as? String ?? "false") == "true"
+            let peerChoking = (dict["peerChoking"] as? String ?? "false") == "true"
+            
+            // Calculate progress from bitfield
+            var progress: Double = 0
+            if seeder {
+                progress = 1.0
+            } else if let bitfield = dict["bitfield"] as? String, !bitfield.isEmpty {
+                let completedBits = bitfield.filter { $0 == "f" || $0 == "F" }.count
+                // Each hex char represents 4 pieces, but this is a rough approximation
+                // For accurate progress we'd need total pieces
+                progress = Double(completedBits) / Double(max(1, bitfield.count))
+            }
+            
+            return TaskPeer(
+                ip: ip,
+                port: port,
+                client: client,
+                downloadSpeed: downloadSpeed,
+                uploadSpeed: uploadSpeed,
+                progress: progress,
+                seeder: seeder,
+                amChoking: amChoking,
+                peerChoking: peerChoking
+            )
+        }
+    }
+
     func getVersion() async throws -> String {
         let result = try await call(method: "aria2.getVersion")
         guard let dict = result as? [String: Any],
@@ -310,6 +379,16 @@ actor Aria2Service {
 
     func saveSession() async throws {
         _ = try await call(method: "aria2.saveSession")
+    }
+    
+    func forceRemove(gid: String) async throws -> String {
+        let result = try await call(method: "aria2.forceRemove", params: [gid])
+        return result as? String ?? gid
+    }
+    
+    func removeResult(gid: String) async throws -> String {
+        let result = try await call(method: "aria2.removeDownloadResult", params: [gid])
+        return result as? String ?? "OK"
     }
 
     // MARK: - Parsing
@@ -339,9 +418,7 @@ actor Aria2Service {
         }
 
         // DEBUG: Print raw dictionary for first active task to debug "0 progress"
-        if dict["status"] as? String == "active" {
-            print("DEBUG: Active Task Dictionary: \(dict)")
-        }
+
 
         let totalLength = parseInt64("totalLength")
         let completedLength = parseInt64("completedLength")
@@ -404,9 +481,20 @@ actor Aria2Service {
         let peers: [TaskPeer] = []
         // Peers require separate call to aria2.getPeers
 
-        // Parse trackers
-        let trackers: [TaskTracker] = []
-        // Trackers can be parsed from bittorrent.announceList
+        // Parse trackers from bittorrent.announceList
+        var trackers: [TaskTracker] = []
+        if let btInfo = dict["bittorrent"] as? [String: Any],
+           let announceList = btInfo["announceList"] as? [[String]] {
+            // announceList is a nested array: [[tier1_url1, tier1_url2], [tier2_url1], ...]
+            for tier in announceList {
+                for url in tier {
+                    let trimmedUrl = url.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmedUrl.isEmpty {
+                        trackers.append(TaskTracker(url: trimmedUrl, status: "active", message: nil))
+                    }
+                }
+            }
+        }
 
         return DownloadTask(
             id: gid,

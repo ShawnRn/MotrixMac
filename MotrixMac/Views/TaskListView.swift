@@ -317,10 +317,12 @@ struct TaskListView: View {
                 // Fallback
                 downloadManager.openFile(task)
             }
-        } else if task.canPause {
-            Task { await downloadManager.pauseTask(task) }
-        } else if task.canResume {
-            Task { await downloadManager.resumeTask(task) }
+        } else if category == .downloading {
+            if task.canPause {
+                Task { await downloadManager.pauseTask(task) }
+            } else if task.canResume {
+                Task { await downloadManager.resumeTask(task) }
+            }
         }
     }
 

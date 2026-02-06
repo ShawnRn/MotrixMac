@@ -4,9 +4,10 @@ import SwiftUI
 /// Sidebar navigation with Liquid Glass styling
 struct SidebarView: View {
     @Environment(DownloadManager.self) private var downloadManager
-    @Binding var selectedCategory: TaskCategory
+    let selectedCategory: TaskCategory
+    let onSelect: (TaskCategory) -> Void
     @State private var hoveredCategory: TaskCategory? = nil
-
+    
     @Namespace private var sidebarNamespace
     @Environment(\.colorScheme) private var colorScheme
 
@@ -27,11 +28,7 @@ struct SidebarView: View {
                         count: downloadManager.taskCount(for: category),
                         namespace: sidebarNamespace
                     ) {
-                        if selectedCategory != category {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                                selectedCategory = category
-                            }
-                        }
+                        onSelect(category)
                     }
                     .onHover { isHovered in
                         withAnimation(.easeInOut(duration: 0.2)) {
@@ -54,11 +51,7 @@ struct SidebarView: View {
                     count: 0,
                     namespace: sidebarNamespace
                 ) {
-                    if selectedCategory != .settings {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                            selectedCategory = .settings
-                        }
-                    }
+                    onSelect(.settings)
                 }
                 .onHover { isHovered in
                     withAnimation(.easeInOut(duration: 0.2)) {
@@ -74,11 +67,7 @@ struct SidebarView: View {
                     count: 0,
                     namespace: sidebarNamespace
                 ) {
-                    if selectedCategory != .about {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                            selectedCategory = .about
-                        }
-                    }
+                    onSelect(.about)
                 }
                 .onHover { isHovered in
                     withAnimation(.easeInOut(duration: 0.2)) {
@@ -249,7 +238,7 @@ struct SidebarActionButton: View {
 // Moved to AppModels.swift
 
 #Preview {
-    SidebarView(selectedCategory: .constant(.downloading))
+    SidebarView(selectedCategory: .downloading, onSelect: { _ in })
         .environment(DownloadManager.shared)
         .frame(width: 200, height: 600)
 }

@@ -18,34 +18,33 @@ struct TaskDetailView: View {
                 .padding(.horizontal, 24)
                 .padding(.bottom, 24)
 
-            Divider()
+            // Divider removed for cleaner look
 
             if task.isTorrent {
-                // Tab picker
-                Picker("详细信息", selection: $selectedTab) {
-                    ForEach(DetailTab.allCases) { tab in
-                        Text(tab.title).tag(tab)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .padding(.horizontal, 24)
-                .padding(.vertical, 16)
+                // Custom sliding tab picker
+                SlidingTabPicker(selection: $selectedTab, tabs: DetailTab.allCases)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 16)
             }
 
-            // Tab content (Replaced TabView with switch to avoid unwanted UI elements)
-            Group {
+            // Tab content with animation
+            ZStack {
                 switch selectedTab {
                 case .general:
                     GeneralTabView(task: task)
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 case .files:
                     FilesTabView(task: task)
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 case .peers:
                     PeersTabView(task: task)
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 case .trackers:
                     TrackersTabView(task: task)
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 }
             }
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: selectedTab)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
@@ -59,111 +58,117 @@ struct TaskDetailHeader: View {
     let initialThumbnail: NSImage?
 
     var body: some View {
-        HStack(spacing: 20) {
-            // Large file icon/thumbnail container
+        HStack(alignment: .top, spacing: 20) {
+            // Icon Container
+            // Use precise framing and compositing to prevent layout glitches
             ZStack {
                 if task.fileType == .image {
-                    TaskThumbnailView(task: task, size: 72, initialImage: initialThumbnail)
+                    TaskThumbnailView(task: task, size: 80, initialImage: initialThumbnail)
                 } else {
-                    FileIconView(fileType: task.fileType)
-                        .frame(width: 72, height: 72)
+                    FileIconView(fileType: task.fileType, size: 80)
+                        .frame(width: 80, height: 80)
                 }
             }
-            .frame(width: 72, height: 72)
+            .frame(width: 80, height: 80)
+            .background {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color(nsColor: .controlBackgroundColor))
+                    .shadow(color: .black.opacity(0.1), radius: 4, y: 2)
+            }
+            .compositingGroup() // Force flattening to prevent "fly out" rendering issues
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text(task.name)
-                    .font(.title3)
-                    .fontWeight(.semibold)
-                    .lineLimit(2)
-
-                HStack(spacing: 16) {
-                    if task.totalLength == 0 {
-                        Label(
-                            task.completedLength > 0
-                                ? task.completedLength.formatted(.byteCount(style: .file))
-                                : "正在获取...", systemImage: "doc")
-                    } else {
-                        Label(
-                            task.totalLength.formatted(.byteCount(style: .file)), systemImage: "doc"
-                        )
-                    }
-
-                    if task.isActive && task.displayStatus != "Connecting..." {
-                        Label(
-                            task.downloadSpeed.formatted(.byteCount(style: .file)) + "/s",
-                            systemImage: "arrow.down"
-                        )
-                        .foregroundStyle(.green)
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
-                    }
-
+            VStack(alignment: .leading, spacing: 12) {
+                // Title & Badge
+                HStack(alignment: .top, spacing: 8) {
+                    Text(task.effectiveName)
+                        .font(.title3)
+                        .fontWeight(.semibold)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true) // Allow multiline expansion
+                    
+                    Spacer(minLength: 0)
+                    
                     StatusBadge(status: task.status, displayStatus: task.displayStatus)
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
-                }
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                
-                // Error Message Display
-                if task.status == "error", let errorMsg = task.errorMessage {
-                    HStack(alignment: .top, spacing: 12) {
-                        Text(errorMsg)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                            .lineLimit(2)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        
-                        Button {
-                            Task {
-                                await downloadManager.retryTask(task)
-                            }
-                        } label: {
-                            Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundStyle(.white)
-                                .padding(6)
-                                .background(.red, in: Circle())
-                        }
-                        .buttonStyle(.plain)
-                        .help("Retry Download")
-                    }
-                    .padding(8)
-                    .background(.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
                 }
 
-                // Large progress bar
-                VStack(alignment: .leading, spacing: 4) {
-                    if task.isIndeterminate {
-                        IndeterminateBar(tint: task.statusColor, height: 6)
-                            .clipShape(Capsule())
-                    } else {
-                        ProgressView(value: task.progress)
-                            .progressViewStyle(.linear)
-                            .tint(task.statusColor)
-                            .frame(height: 6)
-                            .clipShape(Capsule())
+                // Stats Grid - More stable than HStack
+                Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 6) {
+                    GridRow {
+                        InfoLabel(icon: "doc", text: task.totalLength.formatted(.byteCount(style: .file)))
+                        
+                        if task.isActive {
+                            InfoLabel(
+                                icon: "arrow.down",
+                                text: task.downloadSpeed.formatted(.byteCount(style: .file)) + "/s",
+                                color: .green
+                            )
+                        } else {
+                            // Placeholder or Completed Date
+                            InfoLabel(icon: "folder", text: task.isTorrent ? "文件夹" : "文件")
+                        }
                     }
+                    
+                    if task.isActive {
+                        GridRow {
+                            InfoLabel(icon: "clock", text: task.eta)
+                            
+                            InfoLabel(
+                                icon: "arrow.up",
+                                text: task.uploadSpeed.formatted(.byteCount(style: .file)) + "/s",
+                                color: .blue
+                            )
+                        }
+                    }
+                }
+                
+                // Progress Bar
+                VStack(spacing: 6) {
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color.secondary.opacity(0.1))
+                            if !task.isIndeterminate {
+                                Capsule()
+                                    .fill(task.statusColor)
+                                    .frame(width: geo.size.width * task.progress)
+                            } else {
+                                IndeterminateBar(tint: task.statusColor, height: 6)
+                            }
+                        }
+                        .clipShape(Capsule())
+                    }
+                    .frame(height: 6)
 
                     HStack {
-                        if task.isIndeterminate {
-                            Text(task.status == "waiting" ? "正在排队..." : "正在获取元数据...")
-                        } else {
-                            Text("\(Int(task.progress * 100))%")
-                        }
+                        Text(task.isIndeterminate ? "--" : "\(Int(task.progress * 100))%")
                         Spacer()
-                        if task.isActive && task.displayStatus != "Connecting..."
-                            && task.totalLength > 0
-                        {
-                            Text("剩余时间: \(task.eta)")
-                        }
+                        Text("\(task.completedLength.formatted(.byteCount(style: .file))) / \(task.totalLength.formatted(.byteCount(style: .file)))")
                     }
-                    .font(.caption)
+                    .font(.caption2)
+                    .monospacedDigit()
                     .foregroundStyle(.secondary)
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+// 辅助组件：更统一的信息标签
+struct InfoLabel: View {
+    let icon: String
+    let text: String
+    var color: Color = .secondary
+    
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.caption2)
+                .frame(width: 12) // Fixed icon width
+            Text(text)
+                .font(.caption)
+                .monospacedDigit() // Fixed digit width
+        }
+        .foregroundStyle(color)
     }
 }
 
@@ -187,6 +192,63 @@ enum DetailTab: String, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - Sliding Tab Picker
+
+struct SlidingTabPicker<Tab: Hashable & Identifiable>: View {
+    @Binding var selection: Tab
+    let tabs: [Tab]
+    let titleForTab: (Tab) -> String
+    
+    @Namespace private var namespace
+    
+    init(selection: Binding<Tab>, tabs: [Tab], titleForTab: @escaping (Tab) -> String) {
+        self._selection = selection
+        self.tabs = tabs
+        self.titleForTab = titleForTab
+    }
+    
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(tabs) { tab in
+                Button {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                        selection = tab
+                    }
+                } label: {
+                    VStack(spacing: 6) {
+                        Text(titleForTab(tab))
+                            .font(.system(size: 12, weight: selection == tab ? .medium : .regular))
+                            .foregroundStyle(selection == tab ? .primary : .secondary)
+                        
+                        // Underline indicator
+                        ZStack {
+                            Rectangle()
+                                .fill(.clear)
+                                .frame(height: 2)
+                            
+                            if selection == tab {
+                                Rectangle()
+                                    .fill(Color.accentColor)
+                                    .frame(height: 2)
+                                    .matchedGeometryEffect(id: "underline", in: namespace)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+}
+
+extension SlidingTabPicker where Tab == DetailTab {
+    init(selection: Binding<DetailTab>, tabs: [DetailTab]) {
+        self.init(selection: selection, tabs: tabs) { $0.title }
+    }
+}
+
 // MARK: - General Tab
 
 struct GeneralTabView: View {
@@ -206,7 +268,7 @@ struct GeneralTabView: View {
                                 .background(Color.accentColor.opacity(0.1), in: Capsule())
                         }
                     } content: {
-                        SpeedChartView(history: task.downloadSpeedHistory)
+                        SpeedChartView(history: task.downloadSpeedHistory, isComplete: task.status == "complete")
                             .padding(.top, 4)
                         
                         if let bitfield = task.bitfield, !bitfield.isEmpty {
@@ -329,48 +391,202 @@ struct DetailRow: View {
 
 struct SpeedChartView: View {
     let history: [Int64]
+    var isComplete: Bool = false
+    
+    // Smooth the data using a moving average to reduce jaggedness
+    private var smoothedHistory: [Int64] {
+        guard history.count > 4 else { return history }
+        let windowSize = 3 // 3-point moving average
+        var result: [Int64] = []
+        for i in 0..<history.count {
+            let start = max(0, i - windowSize / 2)
+            let end = min(history.count - 1, i + windowSize / 2)
+            let window = history[start...end]
+            let avg = window.reduce(0, +) / Int64(window.count)
+            result.append(avg)
+        }
+        return result
+    }
+    @State private var hoverIndex: Int?
+    @State private var lastRelativeX: Double? = nil
 
     var body: some View {
         Chart {
-            ForEach(Array(history.enumerated()), id: \.offset) { index, speed in
-                LineMark(
-                    x: .value("Time", index),
-                    y: .value("Speed", Double(speed))
-                )
-                .foregroundStyle(Color.accentColor)
-                .interpolationMethod(.catmullRom)
-
-                AreaMark(
-                    x: .value("Time", index),
-                    y: .value("Speed", Double(speed))
-                )
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [Color.accentColor.opacity(0.3), Color.accentColor.opacity(0)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .interpolationMethod(.catmullRom)
+            // Main chart content
+            chartContent
+            
+            // Interaction overlay
+            if let index = hoverIndex, index >= 0, index < history.count {
+               interactionContent(for: index)
             }
         }
-        .chartXAxis(.hidden)
-        .chartYAxis {
-            AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { value in
-                AxisValueLabel {
-                    if let speed = value.as(Double.self) {
-                        Text(Int64(speed).formatted(.byteCount(style: .file)) + "/s")
-                            .font(.system(size: 9, weight: .medium, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                    }
+        .chartXAxis { xAxis }
+        .chartYAxis { yAxis }
+        .chartYScale(domain: 0...max(1, Double(history.max() ?? 0) * 1.1))
+        .chartOverlay { proxy in
+            GeometryReader { geometry in
+                if let anchor = proxy.plotFrame {
+                    let plotFrame = geometry[anchor]
+                    Rectangle().fill(.clear).contentShape(Rectangle())
+                        .onContinuousHover { phase in
+                            handleHover(phase, proxy: proxy, plotFrame: plotFrame)
+                        }
                 }
-                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [2, 2]))
+            }
+        }
+        .frame(height: 140)
+        .padding(.vertical, 8)
+        .chartXScale(domain: 0...max(1, history.count - 1))
+        .onChange(of: history) { oldValue, newValue in
+            updateHoverIndexFromRelativeX()
+        }
+    }
+    
+    @ChartContentBuilder
+    private var chartContent: some ChartContent {
+        // Use smoothed data for the visual curve, but keep original data for tooltips
+        ForEach(Array(smoothedHistory.enumerated()), id: \.offset) { index, speed in
+            LineMark(
+                x: .value("Time", index),
+                y: .value("Speed", Double(speed))
+            )
+            .foregroundStyle(Color.accentColor)
+            .interpolationMethod(.catmullRom)
+
+            AreaMark(
+                x: .value("Time", index),
+                y: .value("Speed", Double(speed))
+            )
+            .foregroundStyle(
+                LinearGradient(
+                    colors: [Color.accentColor.opacity(0.3), Color.accentColor.opacity(0)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .interpolationMethod(.catmullRom)
+        }
+    }
+    
+    @ChartContentBuilder
+    private func interactionContent(for index: Int) -> some ChartContent {
+        RuleMark(x: .value("Time", index))
+            .foregroundStyle(Color.secondary.opacity(0.5))
+            .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
+            .annotation(position: .top, overflowResolution: .init(x: .fit, y: .disabled)) {
+                VStack(spacing: 4) {
+                    Text(history[index].formatted(.byteCount(style: .file)) + "/s")
+                        .font(.system(.caption, design: .monospaced).bold())
+                        .foregroundStyle(.primary)
+                    Text(timeLabel(for: index))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(8)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                .shadow(color: .black.opacity(0.1), radius: 4, y: 2)
+            }
+        
+        PointMark(
+            x: .value("Time", index),
+            y: .value("Speed", Double(smoothedHistory[index]))
+        )
+        .symbolSize(60)
+        .foregroundStyle(Color.white)
+        .symbol {
+            Circle()
+                .fill(Color.accentColor)
+                .frame(width: 8, height: 8)
+                .overlay {
+                    Circle().stroke(.white, lineWidth: 2)
+                }
+                .shadow(radius: 2)
+        }
+    }
+    
+    @AxisContentBuilder
+    private var xAxis: some AxisContent {
+        AxisMarks(values: .automatic(desiredCount: 5)) { value in
+            if let i = value.as(Int.self) {
+                AxisValueLabel {
+                    Text(timeLabel(for: i))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                    .foregroundStyle(.quaternary)
+                AxisTick()
                     .foregroundStyle(.quaternary)
             }
         }
-        .chartYScale(domain: 0...max(1, Double(history.max() ?? 0) * 1.1))
-        .frame(height: 120)
-        .padding(.vertical, 8)
+    }
+    
+    @AxisContentBuilder
+    private var yAxis: some AxisContent {
+        AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { value in
+            AxisValueLabel {
+                if let speed = value.as(Double.self) {
+                    Text(Int64(speed).formatted(.byteCount(style: .file)) + "/s")
+                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .frame(minWidth: 40, alignment: .trailing)
+                }
+            }
+            AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [2, 2]))
+                .foregroundStyle(.quaternary)
+        }
+    }
+    
+    private func handleHover(_ phase: HoverPhase, proxy: ChartProxy, plotFrame: CGRect) {
+        switch phase {
+        case .active(let location):
+            // Calculate x relative to plot area (compensate for Y-axis width)
+            let xInPlot = location.x - plotFrame.origin.x
+            
+            // Safe range check
+            if xInPlot >= 0 && xInPlot <= plotFrame.width {
+                lastRelativeX = xInPlot / plotFrame.width
+                
+                let xValue: Int? = proxy.value(atX: xInPlot)
+                if let x = xValue, x >= 0, x < history.count {
+                    hoverIndex = x
+                } else {
+                    hoverIndex = nil
+                }
+            } else {
+                lastRelativeX = nil
+                hoverIndex = nil
+            }
+        case .ended:
+            lastRelativeX = nil
+            hoverIndex = nil
+        }
+    }
+    
+    private func updateHoverIndexFromRelativeX() {
+        guard let rx = lastRelativeX, !history.isEmpty else {
+            return
+        }
+        
+        // Linear mapping matching the chart's X Scale (0 to history.count - 1)
+        let totalCount = Double(history.count)
+        if totalCount <= 1 {
+            hoverIndex = 0
+            return
+        }
+        
+        let index = Int(round(rx * (totalCount - 1)))
+        hoverIndex = max(0, min(history.count - 1, index))
+    }
+    
+    // Helper to convert index to relative time string (assuming 1s interval)
+    private func timeLabel(for index: Int) -> String {
+        let total = history.count
+        let secondsAgo = total - 1 - index
+        if secondsAgo <= 0 {
+            return isComplete ? "完成" : "现在"
+        }
+        return "-\(secondsAgo)s"
     }
 }
 
@@ -396,7 +612,7 @@ struct FileRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            FileIconView(fileType: FileType.from(filename: file.path))
+            FileIconView(fileType: FileType.from(filename: file.path), size: 32)
                 .frame(width: 32, height: 32)
 
             VStack(alignment: .leading, spacing: 2) {
@@ -428,66 +644,246 @@ struct FileRow: View {
 
 // MARK: - Peers Tab
 
+// MARK: - Peers Tab (极简版 + 气泡交互)
+
 struct PeersTabView: View {
     let task: DownloadTask
 
+    // 使用 Grid 布局可以让极简的 IP 列表排布更高效（例如一行显示 2-3 个），
+    // 或者坚持用 List 单列显示。这里为了清晰，我们保持单列 List，但做得很紧凑。
     var body: some View {
-        ScrollView {
-            if task.peers.isEmpty {
-                ContentUnavailableView(
-                    "暂无用户",
-                    systemImage: "person.2.slash",
-                    description: Text("未连接到任何用户")
-                )
-            } else {
-                LazyVStack(spacing: 8) {
-                    ForEach(task.peers, id: \.ip) { peer in
-                        PeerRow(peer: peer)
+        if task.peers.isEmpty {
+            VStack(spacing: 8) {
+                Image(systemName: "person.2.slash")
+                    .font(.system(size: 32, weight: .light))
+                    .foregroundStyle(.tertiary)
+                Text("暂无用户")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .offset(y: -30)
+        } else {
+            ScrollView {
+                LazyVStack(spacing: 0) { // Removed spacing for compact look
+                    // Stabilize the list by sorting by IP
+                    let sortedPeers = task.peers.sorted { $0.ip < $1.ip }
+                    
+                    ForEach(sortedPeers) { peer in
+                        PeerMinimalRow(peer: peer)
                     }
                 }
-                .padding(24)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
             }
         }
     }
 }
 
-struct PeerRow: View {
+// MARK: - 极简行 (点击触发 Popover)
+
+struct PeerMinimalRow: View {
     let peer: TaskPeer
+    @State private var showPopover = false
+    @State private var isHovering = false
+    
+    // 实时获取国旗
+    var flag: String {
+        GeoIPService.shared.flag(for: peer.ip)
+    }
 
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
+        Button {
+            showPopover.toggle()
+        } label: {
+            HStack(spacing: 12) {
+                // 1. 国旗 (使用固定尺寸防止抖动)
+                Text(flag)
+                    .font(.system(size: 16))
+                    .frame(width: 20, alignment: .center)
+                
+                // 2. IP 地址
                 Text(peer.ip)
-                    .font(.body.monospaced())
-
-                Text(peer.client)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            VStack(alignment: .trailing, spacing: 2) {
-                HStack(spacing: 8) {
-                    Label(
-                        peer.downloadSpeed.formatted(.byteCount(style: .file)) + "/s",
-                        systemImage: "arrow.down"
-                    )
+                    .font(.system(.callout, design: .monospaced)) // Smaller font
+                    .foregroundStyle(.primary)
+                
+                Spacer()
+                
+                // 3. 实时网速 (直接显示)
+                if peer.downloadSpeed > 0 {
+                    HStack(spacing: 2) {
+                        Image(systemName: "arrow.down")
+                            .font(.system(size: 8))
+                        Text(peer.downloadSpeed.formatted(.byteCount(style: .file)) + "/s")
+                    }
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
                     .foregroundStyle(.green)
-
-                    Label(
-                        peer.uploadSpeed.formatted(.byteCount(style: .file)) + "/s",
-                        systemImage: "arrow.up"
-                    )
+                } else if peer.uploadSpeed > 0 {
+                    HStack(spacing: 2) {
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 8))
+                        Text(peer.uploadSpeed.formatted(.byteCount(style: .file)) + "/s")
+                    }
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
                     .foregroundStyle(.blue)
                 }
-                .font(.caption)
+                
+                // 4. 信息图标
+                Image(systemName: "info.circle")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .opacity(isHovering ? 1 : 0)
+            }
+            .padding(.vertical, 4) // Compact padding
+            .padding(.horizontal, 12)
+            .background {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isHovering ? AnyShapeStyle(Color.secondary.opacity(0.1)) : AnyShapeStyle(Color.clear))
             }
         }
-        .padding(12)
-        .background {
-            RoundedRectangle(cornerRadius: 8)
-                .fill(.quaternary.opacity(0.3))
+        .buttonStyle(.plain)
+        .onHover { hover in
+            isHovering = hover 
+        } 
+        // 核心交互：macOS 原生风格气泡
+        .popover(isPresented: $showPopover, arrowEdge: .trailing) {
+            PeerDetailPopover(peer: peer, flag: flag)
+        }
+    }
+}
+
+// MARK: - 详情气泡 (Popover Content)
+
+struct PeerDetailPopover: View {
+    let peer: TaskPeer
+    let flag: String
+    
+    var clientName: String {
+        peer.clientName
+    }
+
+    var countryName: String {
+        guard let isoCode = GeoIPService.shared.lookup(ip: peer.ip) else { return "Unknown Location" }
+        return Locale.current.localizedString(forRegionCode: isoCode) ?? isoCode
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // 顶部：IP 和 地理位置
+            HStack(spacing: 12) {
+                Text(flag)
+                    .font(.system(size: 32))
+                    .shadow(radius: 1)
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(peer.ip)
+                        .font(.headline.monospaced())
+                        .textSelection(.enabled) // 允许复制 IP
+                    
+                    Text(countryName) 
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.bottom, 4)
+            
+            Divider()
+            
+            // 中部：详细数据网格
+            Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
+                // 客户端
+                GridRow {
+                    Label("客户端", systemImage: "desktopcomputer")
+                        .foregroundStyle(.secondary)
+                    Text(clientName)
+                        .lineLimit(1)
+                }
+                
+                // 端口
+                GridRow {
+                    Label("端口", systemImage: "network")
+                        .foregroundStyle(.secondary)
+                    Text(peer.port, format: .number.grouping(.never))
+                        .monospacedDigit()
+                }
+                
+                // 连接状态
+                GridRow {
+                    Label("状态", systemImage: "antenna.radiowaves.left.and.right")
+                        .foregroundStyle(.secondary)
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(statusColor(for: peer))
+                            .frame(width: 8, height: 8)
+                        Text(peer.connectionStatus)
+                            .foregroundStyle(statusColor(for: peer))
+                    }
+                }
+            }
+            .font(.callout)
+            
+            Divider()
+            
+            // 底部：速度面板
+            HStack(spacing: 20) {
+                SpeedIndicator(
+                    title: "下载",
+                    value: peer.downloadSpeed,
+                    color: .green,
+                    icon: "arrow.down"
+                )
+                
+                Divider().frame(height: 20)
+                
+                SpeedIndicator(
+                    title: "上传",
+                    value: peer.uploadSpeed,
+                    color: .blue,
+                    icon: "arrow.up"
+                )
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 4)
+        }
+        .padding(20)
+        .frame(width: 280) // 气泡固定宽度
+    }
+    
+    /// Returns color based on peer connection status
+    private func statusColor(for peer: TaskPeer) -> Color {
+        if peer.seeder {
+            return .green
+        } else if peer.amChoking && peer.peerChoking {
+            return .gray
+        } else if peer.amChoking || peer.peerChoking {
+            return .orange
+        } else {
+            return .blue
+        }
+    }
+}
+
+// 辅助组件：气泡内的速度显示
+struct SpeedIndicator: View {
+    let title: String
+    let value: Int64
+    let color: Color
+    let icon: String
+    
+    var body: some View {
+        VStack(spacing: 4) {
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.caption2)
+                Text(value.formatted(.byteCount(style: .file)) + "/s")
+                    .font(.system(.callout, design: .monospaced))
+                    .fontWeight(.medium)
+            }
+            .foregroundStyle(value > 0 ? color : .secondary)
         }
     }
 }
@@ -498,35 +894,77 @@ struct TrackersTabView: View {
     let task: DownloadTask
 
     var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 8) {
-                ForEach(task.trackers, id: \.url) { tracker in
-                    TrackerRow(tracker: tracker)
-                }
+        if task.trackers.isEmpty {
+            VStack(spacing: 8) {
+                Image(systemName: "antenna.radiowaves.left.and.right.slash")
+                    .font(.system(size: 36, weight: .thin))
+                    .foregroundStyle(.tertiary)
+                
+                Text("暂无 Tracker")
+                    .font(.title3)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.secondary)
+                
+                Text("未配置或未连接到任何 Tracker")
+                    .font(.subheadline)
+                    .foregroundStyle(.tertiary)
             }
-            .padding(24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .offset(y: -30)
+        } else {
+            ScrollView {
+                LazyVStack(spacing: 8) {
+                    // Deduplicate trackers by URL to avoid SwiftUI duplicate ID warnings
+                    let uniqueTrackers = task.trackers.reduce(into: [String: TaskTracker]()) { dict, tracker in
+                        if dict[tracker.url] == nil { dict[tracker.url] = tracker }
+                    }.values.sorted { $0.url < $1.url }
+                    
+                    ForEach(uniqueTrackers, id: \.url) { tracker in
+                        TrackerRow(tracker: tracker)
+                    }
+                }
+                .padding(24)
+            }
         }
     }
 }
 
 struct TrackerRow: View {
     let tracker: TaskTracker
+    
+    private var statusColor: Color {
+        switch tracker.status.lowercased() {
+        case "active": return .green
+        case "waiting": return .orange
+        case "error", "failed": return .red
+        default: return .gray
+        }
+    }
+    
+    private var localizedStatus: String {
+        switch tracker.status.lowercased() {
+        case "active": return "活跃"
+        case "waiting": return "等待中"
+        case "error", "failed": return "失败"
+        default: return tracker.status.capitalized
+        }
+    }
 
     var body: some View {
-        HStack {
+        HStack(spacing: 8) {
             Circle()
-                .fill(tracker.status == "active" ? .green : .orange)
-                .frame(width: 8, height: 8)
+                .fill(statusColor)
+                .frame(width: 6, height: 6)
 
             Text(tracker.url)
-                .font(.body.monospaced())
+                .font(.caption.monospaced())
                 .lineLimit(1)
                 .truncationMode(.middle)
 
             Spacer()
 
-            Text(tracker.status.capitalized)
-                .font(.caption)
+            Text(localizedStatus)
+                .font(.caption2)
                 .foregroundStyle(.secondary)
         }
         .padding(12)

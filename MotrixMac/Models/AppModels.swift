@@ -161,10 +161,19 @@ struct DownloadTask: Identifiable, Equatable, Codable, Sendable {
     }
 
     var isIndeterminate: Bool {
-        (status == "active" || status == "waiting") && (totalLength <= 0 || (completedLength <= 0 && status != "paused"))
+        // 做种中或下载完成时不应该是“不确定进度”的
+        if isSeeding || status == "complete" { return false }
+        return (status == "active" || status == "waiting") && (totalLength <= 0 || (completedLength <= 0 && status != "paused"))
+    }
+
+    var isSeeding: Bool {
+        // 做种的定义：BT 任务，状态为活跃，且已完成长度等于总长度（且总长度大于0）
+        // 或者 aria2 明确报告 uploadSpeed > 0 且下载已完成
+        isTorrent && status == "active" && totalLength > 0 && completedLength >= totalLength
     }
 
     var statusColor: Color {
+        if isSeeding { return .indigo }
         switch status {
         case "error": return .red
         case "paused": return .yellow
@@ -195,8 +204,37 @@ struct DownloadTask: Identifiable, Equatable, Codable, Sendable {
         status == "active" || status == "waiting" || status == "paused" || status == "error"
     }
 
+    var effectiveName: String {
+        if isTorrent && !files.isEmpty {
+            let selectedFiles = files.filter { $0.selected }
+            if selectedFiles.count == 1, let file = selectedFiles.first {
+                return (file.path as NSString).lastPathComponent
+            }
+        }
+        return name
+    }
+
     var fileType: FileType {
-        FileType.from(filename: name)
+        if isTorrent {
+            // Intelligent display for multi-file torrents
+            if !files.isEmpty {
+                let selectedFiles = files.filter { $0.selected }
+                
+                // If only one file is selected, show its specific type instead of generic folder
+                if selectedFiles.count == 1, let file = selectedFiles.first {
+                     return FileType.from(filename: file.path)
+                }
+                
+                // If multiple files selected, show folder
+                if selectedFiles.count > 1 {
+                    return .folder
+                }
+            }
+            
+            // Fallback for initial state or empty selection
+            return files.count > 1 ? .folder : .torrent
+        }
+        return FileType.from(filename: name)
     }
 
     var eta: String {
@@ -218,12 +256,16 @@ struct DownloadTask: Identifiable, Equatable, Codable, Sendable {
 
     var displayStatus: String {
         if status == "active" {
+            if isSeeding {
+                return "做种中"
+            }
             if totalLength == 0 && completedLength == 0 && connections == 0 {
                 return "Connecting..."
             }
-            if totalLength == 0 && completedLength == 0 && connections > 0 {
-                return "Downloading"
+            if downloadSpeed == 0 {
+                return "等待中"
             }
+            return "下载中"
         }
 
         switch status {
@@ -249,13 +291,37 @@ struct TaskFile: Equatable, Codable {
 }
 
 /// Peer connected to a torrent
-struct TaskPeer: Equatable, Codable {
+struct TaskPeer: Equatable, Codable, Identifiable {
+    var id: String { "\(ip):\(port)" }
     let ip: String
     let port: Int
-    let client: String
+    let client: String // This is the raw peer ID (encoded)
     let downloadSpeed: Int64
     let uploadSpeed: Int64
+    let progress: Double
     let seeder: Bool
+    let amChoking: Bool   // We are choking this peer (not uploading to them)
+    let peerChoking: Bool // Peer is choking us (not uploading to us)
+    
+    // Computed property for display
+    var clientName: String {
+        PeerIDParser.parse(peerID: client)
+    }
+    
+    /// Connection status description
+    var connectionStatus: String {
+        if seeder {
+            return "做种者"
+        } else if amChoking && peerChoking {
+            return "阻塞中"
+        } else if amChoking {
+            return "等待上传"
+        } else if peerChoking {
+            return "等待下载"
+        } else {
+            return "传输中"
+        }
+    }
 }
 
 /// Tracker for a torrent
@@ -276,7 +342,7 @@ enum TaskCategory: String, Identifiable {
 
     var title: String {
         switch self {
-        case .downloading: return "下载中"
+        case .downloading: return "进行中"
         case .completed: return "已完成"
         case .settings: return "设置"
         case .about: return "关于 MotrixMac"
@@ -317,6 +383,8 @@ enum FileType {
     case archive
     case application
     case apk
+    case torrent
+    case folder
     case other
 
     var icon: String {
@@ -328,6 +396,8 @@ enum FileType {
         case .archive: return "archivebox"
         case .application: return "app.gift"
         case .apk: return "app.gift"
+        case .torrent: return "dot.radiowaves.left.and.right"
+        case .folder: return "folder.fill"
         case .other: return "doc"
         }
     }
@@ -341,6 +411,8 @@ enum FileType {
         case .archive: return .brown
         case .application: return .indigo
         case .apk: return Color(red: 61/255, green: 220/255, blue: 132/255) // Android Green
+        case .torrent: return .indigo
+        case .folder: return .blue
         case .other: return .gray
         }
     }

@@ -92,22 +92,22 @@ struct EmbeddedPreferencesView: View {
     
     var body: some View {
         ZStack {
-            switch activeTab {
-            case .general:
-                GeneralPreferencesTab()
-                    .id("general")
-            case .downloads:
-                DownloadsPreferencesTab()
-                    .id("downloads")
-            case .network:
-                NetworkPreferencesTab()
-                    .id("network")
-            case .advanced:
-                AdvancedPreferencesTab()
-                    .id("advanced")
-            }
+            GeneralPreferencesTab()
+                .opacity(activeTab == .general ? 1 : 0)
+                .allowsHitTesting(activeTab == .general)
+            
+            DownloadsPreferencesTab()
+                .opacity(activeTab == .downloads ? 1 : 0)
+                .allowsHitTesting(activeTab == .downloads)
+            
+            NetworkPreferencesTab()
+                .opacity(activeTab == .network ? 1 : 0)
+                .allowsHitTesting(activeTab == .network)
+            
+            AdvancedPreferencesTab()
+                .opacity(activeTab == .advanced ? 1 : 0)
+                .allowsHitTesting(activeTab == .advanced)
         }
-        .transition(.opacity)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: activeTab)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -120,8 +120,10 @@ struct GeneralPreferencesTab: View {
     @AppStorage("silentStart") private var silentStart = false
     @AppStorage("theme") private var theme = "auto"
     @AppStorage("language") private var language = "zh-CN"
-    @AppStorage("showInDock") private var showInDock = true
     @AppStorage("showSpeedInMenuBar") private var showSpeedInMenuBar = false
+    @AppStorage("autoJumpOnTaskCreated") private var autoJumpOnTaskCreated = true
+    @AppStorage("skipDeleteConfirmation") private var skipDeleteConfirmation = false
+    @AppStorage("showInDock") private var showInDock = true
 
     var body: some View {
         Form {
@@ -139,6 +141,10 @@ struct GeneralPreferencesTab: View {
                 Toggle("在 Dock 中显示", isOn: $showInDock)
 
                 Toggle("在菜单栏显示速度", isOn: $showSpeedInMenuBar)
+                
+                Toggle("新建任务后自动跳转到下载页面", isOn: $autoJumpOnTaskCreated)
+                
+                Toggle("删除任务前无需确认", isOn: $skipDeleteConfirmation)
             }
 
             Section {
@@ -183,6 +189,21 @@ struct DownloadsPreferencesTab: View {
     @AppStorage("defaultConnections") private var defaultConnections = 16
     @AppStorage("autoRenameFiles") private var autoRename = true
     @AppStorage("notifyOnComplete") private var notifyOnComplete = true
+    @AppStorage("autoJumpOnTaskCreated") private var autoJumpOnTaskCreated = true
+    
+    // Speed limit units
+    @AppStorage("downloadSpeedUnit") private var downloadSpeedUnit = "KB/s"
+    @AppStorage("uploadSpeedUnit") private var uploadSpeedUnit = "KB/s"
+    @AppStorage("maxDownloadSpeed") private var maxDownloadSpeed = 0
+    @AppStorage("maxUploadSpeed") private var maxUploadSpeed = 0
+
+    // BT Settings
+    @AppStorage("btSaveMetadata") private var btSaveMetadata = true
+    @AppStorage("btAutoStart") private var btAutoStart = true
+    @AppStorage("btContinuousSeeding") private var btContinuousSeeding = false
+    @AppStorage("seedRatio") private var seedRatio = 1.0
+    @AppStorage("seedTime") private var seedTime = 60 // minutes
+    @AppStorage("continueDownload") private var continueDownload = true
 
     var body: some View {
         Form {
@@ -208,46 +229,143 @@ struct DownloadsPreferencesTab: View {
 
             Section {
                 Stepper("最大同时下载数：\(maxConcurrent)", value: $maxConcurrent, in: 1...10)
-
-                // Slider without step parameter to avoid tick marks
-                Slider(
-                    value: .init(
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("单任务最大线程数：\(defaultConnections)")
+                        Spacer()
+                    }
+                    Slider(value: Binding(
                         get: { Double(defaultConnections) },
                         set: { defaultConnections = Int($0) }
-                    ), in: 1...128,
-                    onEditingChanged: { editing in
-                        if !editing {
-                            // Fix: Explicitly force sync to UserDefaults to ensure EngineProcess sees the update immediately
-                            print("PreferencesView: Persistence fix - Writing defaultConnections = \(defaultConnections)")
-                            UserDefaults.standard.set(defaultConnections, forKey: "defaultConnections")
-                            UserDefaults.standard.synchronize()
-                            
-                            // Dynamic update: Apply settings immediately without restart
-                            Task { 
-                                await DownloadManager.shared.applyGlobalOptions()
-                                // Force restart to update configuration file for future raw RPC calls
-                                await DownloadManager.shared.restartEngine()
-                            }
-                        }
+                    ), in: 1...128) {
+                        Text("线程数")
                     }
-                ) {
-                    Text("线程数：\(defaultConnections)")
+                    .onChange(of: defaultConnections) { _, _ in
+                        saveConnections()
+                    }
+                }
+                .padding(.vertical, 4)
+
+                Toggle("断点续传", isOn: $continueDownload)
+            } header: {
+                Text("任务管理")
+            }
+
+            Section {
+                HStack {
+                    Text("上传限速")
+                    Spacer()
+                    TextField("", value: $maxUploadSpeed, format: .number)
+                        .textFieldStyle(.plain)
+                        .padding(6)
+                        .frame(width: 80)
+                        .background {
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color(nsColor: .controlBackgroundColor))
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+                        }
+                    
+                    Picker("", selection: $uploadSpeedUnit) {
+                        Text("KB/s").tag("KB/s")
+                        Text("MB/s").tag("MB/s")
+                    }
+                    .pickerStyle(.menu)
+                    .frame(width: 100)
+                }
+
+                HStack {
+                    Text("下载限速")
+                    Spacer()
+                    TextField("", value: $maxDownloadSpeed, format: .number)
+                        .textFieldStyle(.plain)
+                        .padding(6)
+                        .frame(width: 80)
+                        .background {
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color(nsColor: .controlBackgroundColor))
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+                        }
+                    
+                    Picker("", selection: $downloadSpeedUnit) {
+                        Text("KB/s").tag("KB/s")
+                        Text("MB/s").tag("MB/s")
+                    }
+                    .pickerStyle(.menu)
+                    .frame(width: 100)
+                }
+
+                Text("设为 0 表示无限制")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            } header: {
+                Text("传输设置")
+            }
+
+            Section {
+                Toggle("保存磁力链接元数据为种子文件", isOn: $btSaveMetadata)
+                Toggle("自动开始下载磁力链接、种子文件", isOn: $btAutoStart)
+                
+                Toggle("持续做种，直到手动停止", isOn: $btContinuousSeeding)
+                
+                if !btContinuousSeeding {
+                    HStack {
+                        Text("做种分享率")
+                        Spacer()
+                        TextField("", value: $seedRatio, format: .number)
+                            .textFieldStyle(.plain)
+                            .padding(6)
+                            .frame(width: 80)
+                            .background {
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(Color(nsColor: .controlBackgroundColor))
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+                            }
+                    }
+                    
+                    HStack {
+                        Text("做种时间 (分钟)")
+                        Spacer()
+                        TextField("", value: $seedTime, format: .number)
+                            .textFieldStyle(.plain)
+                            .padding(6)
+                            .frame(width: 80)
+                            .background {
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(Color(nsColor: .controlBackgroundColor))
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+                            }
+                    }
                 }
             } header: {
-                Text("性能")
+                Text("BT 设置")
             }
 
             Section {
                 Toggle("自动重命名已存在文件", isOn: $autoRename)
                 Toggle("下载完成时通知", isOn: $notifyOnComplete)
             } header: {
-                Text("行为")
+                Text("常规行为")
             }
         }
         .formStyle(.grouped)
         .padding()
         .onChange(of: maxConcurrent) { _, _ in
             Task { await DownloadManager.shared.applyGlobalOptions() }
+        }
+    }
+
+    private func saveConnections() {
+        print("PreferencesView: Saving defaultConnections = \(defaultConnections)")
+        UserDefaults.standard.set(defaultConnections, forKey: "defaultConnections")
+        UserDefaults.standard.synchronize()
+        Task {
+            await DownloadManager.shared.applyGlobalOptions()
+            await DownloadManager.shared.restartEngine()
         }
     }
 
@@ -273,59 +391,77 @@ struct NetworkPreferencesTab: View {
     @AppStorage("proxyPassword") private var proxyPassword = ""
     @AppStorage("maxDownloadSpeed") private var maxDownloadSpeed = 0
     @AppStorage("maxUploadSpeed") private var maxUploadSpeed = 0
+    // Network Enhanced Defaults: IPv6 Disabled, Async DNS Disabled
+    @AppStorage("enableIPv6") private var enableIPv6 = false
+    @AppStorage("enableAsyncDNS") private var enableAsyncDNS = false
+    
+    // Protocol Association
+    @AppStorage("handleMagnetLinks") private var handleMagnetLinks = true
+    @AppStorage("handleThunderLinks") private var handleThunderLinks = false
 
     var body: some View {
         Form {
             Section {
+                Toggle("磁力链接 [ magnet:// ]", isOn: $handleMagnetLinks)
+                    .onChange(of: handleMagnetLinks) { _, newValue in
+                        updateProtocolHandler(scheme: "magnet", enabled: newValue)
+                    }
+                Toggle("迅雷链接 [ thunder:// ]", isOn: $handleThunderLinks)
+                    .onChange(of: handleThunderLinks) { _, newValue in
+                        updateProtocolHandler(scheme: "thunder", enabled: newValue)
+                    }
+            } header: {
+                Text("下载协议: 设置为以下协议的默认客户端")
+            }
+
+            Section {
                 Toggle("启用代理", isOn: $proxyEnabled)
 
                 if proxyEnabled {
-                    TextField("主机", text: $proxyHost)
-                        .textFieldStyle(.roundedBorder)
-
-                    TextField("端口", text: $proxyPort)
-                        .textFieldStyle(.roundedBorder)
-
-                    TextField("用户名 （可选）", text: $proxyUsername)
-                        .textFieldStyle(.roundedBorder)
-
-                    SecureField("密码 （可选）", text: $proxyPassword)
-                        .textFieldStyle(.roundedBorder)
+                    Group {
+                        TextField("主机", text: $proxyHost)
+                        TextField("端口", text: $proxyPort)
+                        TextField("用户名 （可选）", text: $proxyUsername)
+                        SecureField("密码 （可选）", text: $proxyPassword)
+                    }
+                    .textFieldStyle(.plain)
+                    .padding(6)
+                    .background {
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color(nsColor: .controlBackgroundColor))
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+                    }
                 }
             } header: {
                 Text("代理")
             }
 
             Section {
-                HStack {
-                    Text("最大下载速度")
-                    Spacer()
-                    TextField("", value: $maxDownloadSpeed, format: .number)
-                        .frame(width: 80)
-                        .textFieldStyle(.roundedBorder)
-                    Text("KB/s")
-                        .foregroundStyle(.secondary)
-                }
-
-                HStack {
-                    Text("最大上传速度")
-                    Spacer()
-                    TextField("", value: $maxUploadSpeed, format: .number)
-                        .frame(width: 80)
-                        .textFieldStyle(.roundedBorder)
-                    Text("KB/s")
-                        .foregroundStyle(.secondary)
-                }
-
-                Text("设为 0 表示无限制")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
+                Toggle("启用 IPv6", isOn: $enableIPv6)
+                    .help("如果您的网络环境不支持 IPv6，启用此选项可能导致连接超时。")
+                Toggle("启用异步 DNS", isOn: $enableAsyncDNS)
+                    .help("启用 aria2 内置的异步 DNS 解析。如果您使用了代理软件，建议关闭此选项以防止 DNS 污染。")
             } header: {
-                Text("速度限制")
+                Text("高级网络")
             }
         }
         .formStyle(.grouped)
         .padding()
+        .onChange(of: enableIPv6) { _, _ in restartEngine() }
+        .onChange(of: enableAsyncDNS) { _, _ in restartEngine() }
+    }
+    
+    private func updateProtocolHandler(scheme: String, enabled: Bool) {
+        // Note: URL Scheme registration is primarily handled via Info.plist and system association.
+        // This toggle allows users to express preference.
+        print("PreferencesView: Protocol handler for \(scheme) set to \(enabled)")
+    }
+
+    private func restartEngine() {
+        Task {
+            await DownloadManager.shared.restartEngine()
+        }
     }
 }
 
@@ -339,11 +475,15 @@ struct AdvancedPreferencesTab: View {
     @State private var rpcSecret: String = ""
     @State private var enableUpnp: Bool = true
     @State private var enableDht: Bool = true
+    @State private var enablePex: Bool = true
+    @State private var enableLpd: Bool = true
+    @State private var btEncryptionMode: Int = 0 // 0: Allow, 1: Force, 2: Disable
     @State private var btPort: Int = 6881
     @State private var autoSyncTracker: Bool = true
     @State private var trackerSource: String = "trackers_best.txt"
     @State private var userAgent: String = "MotrixMac/2.0"
     @State private var updateInterval: String = "daily"
+    @State private var customTrackerURLs: String = "" // [NEW] User defined subscription URLs
     
     // For manual tracker input
     @State private var trackerListText: String = ""
@@ -357,12 +497,16 @@ struct AdvancedPreferencesTab: View {
     @State private var originalRpcSecret: String = ""
     @State private var originalEnableUpnp: Bool = true
     @State private var originalEnableDht: Bool = true
+    @State private var originalEnablePex: Bool = true
+    @State private var originalEnableLpd: Bool = true
+    @State private var originalBtEncryptionMode: Int = 0
     @State private var originalBtPort: Int = 6881
     @State private var originalAutoSyncTracker: Bool = true
     @State private var originalTrackerSource: String = "trackers_best.txt"
     @State private var originalUserAgent: String = "MotrixMac/2.0"
     @State private var originalTrackerListText: String = ""
     @State private var originalUpdateInterval: String = "daily"
+    @State private var originalCustomTrackerURLs: String = ""
 
     // Log Level Persistence
     @AppStorage("LogLevel") private var logLevelRaw: Int = 1
@@ -377,69 +521,30 @@ struct AdvancedPreferencesTab: View {
             Section {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
-                        // Custom Multi-select Dropdown
-                        Menu {
-                            ForEach(availableTrackers, id: \.self) { source in
-                                Button {
-                                    toggleTrackerSource(source)
-                                } label: {
-                                    HStack {
-                                        Text(source)
-                                        if isTrackerSelected(source) {
-                                            Image(systemName: "checkmark")
-                                        }
-                                    }
-                                }
-                            }
-                        } label: {
-                            HStack {
-                                if trackerSource.isEmpty {
-                                    Text("选择 Tracker 源...")
-                                        .foregroundStyle(.secondary)
-                                } else {
-                                    let selected = trackerSource.components(separatedBy: ",").filter { !$0.isEmpty }
-                                    ForEach(selected, id: \.self) { item in
-                                        Text(item)
-                                            .font(.caption)
-                                            .padding(.horizontal, 6)
-                                            .padding(.vertical, 2)
-                                            .background(.quaternary)
-                                            .clipShape(RoundedRectangle(cornerRadius: 4))
-                                    }
-                                }
-                                Spacer()
-                                Image(systemName: "chevron.up.chevron.down")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(5)
-                            .frame(minHeight: 28) // Match standard input height
-                            .background {
-                                RoundedRectangle(cornerRadius: 6)
-                                    .stroke(Color.gray.opacity(0.2), lineWidth: 1)
-                                    .background(Color.clear) // Transparent center
-                            }
-                        }
-                        .menuStyle(.borderlessButton)
-                        .frame(maxWidth: .infinity) // Allow it to expand if needed, or keep fixed width
-                        
-                        Button {
-                            Task {
-                                await fetchTrackers()
-                            }
-                        } label: {
-                            Image(systemName: "arrow.clockwise")
-                                .rotationEffect(.degrees(isFetchingTrackers ? 360 : 0))
-                                .animation(isFetchingTrackers ? .linear(duration: 1).repeatForever(autoreverses: false) : .default, value: isFetchingTrackers)
-                        }
-                        .disabled(isFetchingTrackers)
-                        .help("立即更新 Tracker 列表")
+                        TrackerSourceSelector(
+                            sources: availableTrackers,
+                            selection: Binding(
+                                get: { trackerSource.components(separatedBy: ",").filter { !$0.isEmpty } },
+                                set: { trackerSource = $0.joined(separator: ",") }
+                            ),
+                            customURLs: $customTrackerURLs,
+                            isFetching: isFetchingTrackers,
+                            fetchAction: { Task { await fetchTrackers() } }
+                        )
                     }
                     
-                    TextEditor(text: $trackerListText)
-                        .font(.system(.caption, design: .monospaced))
-                        .frame(height: 80)
-                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.gray.opacity(0.2), lineWidth: 1))
+                    Toggle("自动同步 Tracker 服务器列表", isOn: $autoSyncTracker)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .onChange(of: autoSyncTracker) { _, newValue in
+                            Task {
+                                if newValue {
+                                    await TrackerService.shared.startAutoUpdate()
+                                } else {
+                                    await TrackerService.shared.stopAutoUpdate()
+                                }
+                            }
+                        }
                     
                     Picker("更新频率", selection: $updateInterval) {
                         Text("每 12 小时").tag("12h")
@@ -447,11 +552,24 @@ struct AdvancedPreferencesTab: View {
                         Text("每周").tag("weekly")
                         Text("每月").tag("monthly")
                     }
+                    .disabled(!autoSyncTracker)
+                    .foregroundStyle(autoSyncTracker ? .primary : .secondary)
                 }
                 .padding(.vertical, 4)
             } header: {
-                Text("Tracker 服务器")
+                Text("Tracker 服务器 (订阅)")
                     .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            
+            Section {
+                TextEditor(text: $trackerListText)
+                    .font(.system(.caption, design: .monospaced))
+                    .frame(height: 120)
+                    .padding(1)
+                    .background(Color(nsColor: .controlBackgroundColor))
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.primary.opacity(0.1), lineWidth: 1))
+            } header: {
+                Text("当前 Tracker 列表 (手动编辑)")
             }
 
             // RPC Settings
@@ -467,7 +585,7 @@ struct AdvancedPreferencesTab: View {
                             RoundedRectangle(cornerRadius: 6)
                                 .fill(Color(nsColor: .controlBackgroundColor))
                             RoundedRectangle(cornerRadius: 6)
-                                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                                .stroke(Color.primary.opacity(0.1), lineWidth: 1)
                         }
                 }
                 
@@ -521,7 +639,7 @@ struct AdvancedPreferencesTab: View {
                         RoundedRectangle(cornerRadius: 6)
                             .fill(Color(nsColor: .controlBackgroundColor))
                         RoundedRectangle(cornerRadius: 6)
-                            .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                            .stroke(Color.primary.opacity(0.1), lineWidth: 1)
                     }
                 }
 
@@ -586,10 +704,25 @@ struct AdvancedPreferencesTab: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            // BitTorrent Settings
+            // Privacy & BitTorrent Settings
             Section {
-                Toggle("启用 UPnP/NAT-PMP", isOn: $enableUpnp)
-                Toggle("启用 DHT", isOn: $enableDht)
+                Toggle("启用 DHT (去中心化网络) 以找到更多用户", isOn: $enableDht)
+                Toggle("启用用户交换 (PeX) 以找到更多用户", isOn: $enablePex)
+                Toggle("启用本地用户发现 (LPD) 以找到更多用户", isOn: $enableLpd)
+                
+                Picker("加密模式", selection: $btEncryptionMode) {
+                    Text("允许加密").tag(0)
+                    Text("强制加密").tag(1)
+                    Text("禁用加密").tag(2)
+                }
+                .pickerStyle(.menu)
+
+                HStack {
+                    Text("启用 UPnP/NAT-PMP")
+                    Spacer()
+                    Toggle("", isOn: $enableUpnp)
+                        .labelsHidden()
+                }
 
                 HStack {
                     Text("BT 监听端口")
@@ -602,11 +735,11 @@ struct AdvancedPreferencesTab: View {
                             RoundedRectangle(cornerRadius: 6)
                                 .fill(Color(nsColor: .controlBackgroundColor))
                             RoundedRectangle(cornerRadius: 6)
-                                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                                .stroke(Color.primary.opacity(0.1), lineWidth: 1)
                         }
                 }
             } header: {
-                Text("BitTorrent")
+                Text("隐私 & BitTorrent")
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
@@ -646,7 +779,7 @@ struct AdvancedPreferencesTab: View {
             Section {
                 HStack {
                     Button("重置所有设置") {
-                        // TODO: Reset logic
+                        restoreInitialSettings()
                     }
                     .foregroundStyle(.red)
                     
@@ -657,7 +790,46 @@ struct AdvancedPreferencesTab: View {
                     }
                 }
             } header: {
-                Text("重置")
+                Text("常规重置")
+            }
+
+            // Developer Section
+            Section {
+                VStack(alignment: .leading, spacing: 12) {
+                    PathRow(label: "内置的 aria2.conf 路径", path: aria2ConfPath)
+                    PathRow(label: "下载会话路径", path: sessionPath)
+                    PathRow(label: "应用日志路径", path: logFilePath)
+                }
+                .padding(.vertical, 4)
+                
+                HStack(spacing: 12) {
+                    Button {
+                        resetSession()
+                    } label: {
+                        Text("重置下载会话记录")
+                            .font(.system(size: 13, weight: .medium))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+                            .foregroundStyle(.orange)
+                    }
+                    .buttonStyle(.plain)
+                    
+                    Button {
+                        restoreInitialSettings()
+                    } label: {
+                        Text("恢复初始设置")
+                            .font(.system(size: 13, weight: .medium))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+                            .foregroundStyle(.red)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.top, 4)
+            } header: {
+                Text("开发者")
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
@@ -666,12 +838,18 @@ struct AdvancedPreferencesTab: View {
         .onAppear {
             loadActualRuntimeValues()
             loadOriginals()
+            // Ensure visual state is synced on appear
+            settingsAreDirty = isDirty
         }
         .onChange(of: isDirty) { _, newValue in
             settingsAreDirty = newValue
         }
         .onReceive(NotificationCenter.default.publisher(for: .saveSettings)) { _ in
-            saveAndRestart()
+            saveSettings()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .discardSettings)) { _ in
+            loadActualRuntimeValues()
+            loadOriginals()
         }
     }
     
@@ -684,12 +862,16 @@ struct AdvancedPreferencesTab: View {
         rpcSecret = defaults.string(forKey: "rpcSecret") ?? ""
         enableUpnp = defaults.object(forKey: "enableUpnp") == nil ? true : defaults.bool(forKey: "enableUpnp")
         enableDht = defaults.object(forKey: "enableDht") == nil ? true : defaults.bool(forKey: "enableDht")
+        enablePex = defaults.object(forKey: "enablePex") == nil ? true : defaults.bool(forKey: "enablePex")
+        enableLpd = defaults.object(forKey: "enableLpd") == nil ? true : defaults.bool(forKey: "enableLpd")
+        btEncryptionMode = defaults.integer(forKey: "btEncryptionMode")
         btPort = defaults.integer(forKey: "btListenPort") == 0 ? 6881 : defaults.integer(forKey: "btListenPort")
         autoSyncTracker = defaults.object(forKey: "autoSyncTracker") == nil ? true : defaults.bool(forKey: "autoSyncTracker")
         trackerSource = defaults.string(forKey: "trackerSource") ?? "trackers_best.txt"
         userAgent = defaults.string(forKey: "userAgent") ?? "MotrixMac/2.0"
         trackerListText = defaults.string(forKey: "btTrackers") ?? ""
         updateInterval = defaults.string(forKey: "trackerUpdateInterval") ?? "daily"
+        customTrackerURLs = defaults.string(forKey: "customTrackerURLs") ?? ""
     }
     
     private var isDirty: Bool {
@@ -697,12 +879,16 @@ struct AdvancedPreferencesTab: View {
         rpcSecret != originalRpcSecret ||
         enableUpnp != originalEnableUpnp ||
         enableDht != originalEnableDht ||
+        enablePex != originalEnablePex ||
+        enableLpd != originalEnableLpd ||
+        btEncryptionMode != originalBtEncryptionMode ||
         btPort != originalBtPort ||
         autoSyncTracker != originalAutoSyncTracker ||
         trackerSource != originalTrackerSource ||
         userAgent != originalUserAgent ||
         trackerListText != originalTrackerListText ||
-        updateInterval != originalUpdateInterval
+        updateInterval != originalUpdateInterval ||
+        customTrackerURLs != originalCustomTrackerURLs
     }
     
     private func loadOriginals() {
@@ -710,63 +896,70 @@ struct AdvancedPreferencesTab: View {
         originalRpcSecret = rpcSecret
         originalEnableUpnp = enableUpnp
         originalEnableDht = enableDht
+        originalEnablePex = enablePex
+        originalEnableLpd = enableLpd
+        originalBtEncryptionMode = btEncryptionMode
         originalBtPort = btPort
         originalAutoSyncTracker = autoSyncTracker
         originalTrackerSource = trackerSource
         originalUserAgent = userAgent
         originalTrackerListText = trackerListText
         originalUpdateInterval = updateInterval
+        originalCustomTrackerURLs = customTrackerURLs
     }
     
     private func resetEngine() {
-        if let appDelegate = NSApplication.shared.delegate as? AppDelegate,
-           let aria2 = appDelegate.aria2Process {
-            aria2.stop()
-            // Wait slightly more to ensure socket is freed
-            Thread.sleep(forTimeInterval: 0.8)
-            aria2.start()
-            
-            Task {
-                await downloadManager.disconnect()
-                try? await Task.sleep(for: .milliseconds(2000))
-                await downloadManager.connect()
-            }
+        // Use the robust forceRepair flow from DownloadManager
+        Task {
+            await downloadManager.forceRepair()
         }
     }
     
-    private func saveAndRestart() {
-        print("PreferencesView: Saving settings - Port: \(rpcPort), Secret: \(rpcSecret)")
+    private func saveSettings() {
+        let needsRestart = rpcPort != originalRpcPort || rpcSecret != originalRpcSecret
+        
+        print("PreferencesView: Saving settings - Needs restart: \(needsRestart)")
         let defaults = UserDefaults.standard
         defaults.set(rpcPort, forKey: "rpcPort")
         defaults.set(rpcSecret, forKey: "rpcSecret")
-        // ... rest of the code ...
         defaults.set(enableUpnp, forKey: "enableUpnp")
         defaults.set(enableDht, forKey: "enableDht")
+        defaults.set(enablePex, forKey: "enablePex")
+        defaults.set(enableLpd, forKey: "enableLpd")
+        defaults.set(btEncryptionMode, forKey: "btEncryptionMode")
         defaults.set(btPort, forKey: "btListenPort")
         defaults.set(autoSyncTracker, forKey: "autoSyncTracker")
         defaults.set(trackerSource, forKey: "trackerSource")
         defaults.set(userAgent, forKey: "userAgent")
         defaults.set(trackerListText, forKey: "btTrackers")
         defaults.set(updateInterval, forKey: "trackerUpdateInterval")
+        defaults.set(customTrackerURLs, forKey: "customTrackerURLs")
         defaults.synchronize()
         
-        // Hot restart aria2 process WITHOUT restarting the app
-        if let appDelegate = NSApplication.shared.delegate as? AppDelegate,
-           let aria2 = appDelegate.aria2Process {
-            // Restart with new settings
-            print("PreferencesView: Requesting aria2 engine restart...")
-            aria2.restart(port: rpcPort, secret: rpcSecret)
+        if needsRestart {
+            // Hot restart aria2 process WITHOUT restarting the app
+            if let appDelegate = NSApplication.shared.delegate as? AppDelegate,
+               let aria2 = appDelegate.aria2Process {
+                print("PreferencesView: Requesting aria2 engine restart due to RPC configuration change...")
+                aria2.restart(port: rpcPort, secret: rpcSecret)
+            }
+            
+            // Reconnect to aria2 with new settings
+            Task {
+                await downloadManager.disconnect()
+                try? await Task.sleep(for: .milliseconds(1000)) // Wait for aria2 to restart
+                await downloadManager.connect()
+            }
+        } else {
+            // Live update via RPC for all other settings
+            print("PreferencesView: Applying settings live via RPC...")
+            Task {
+                await downloadManager.applyGlobalOptions()
+            }
         }
         
-        // Reload originals
+        // Reload originals to clear dirty state
         loadOriginals()
-        
-        // Reconnect to aria2 with new settings
-        Task {
-            await downloadManager.disconnect()
-            try? await Task.sleep(for: .milliseconds(1000)) // Wait for aria2 to restart
-            await downloadManager.connect()
-        }
     }
     
     private func generateRandomSecret() -> String {
@@ -804,38 +997,9 @@ struct AdvancedPreferencesTab: View {
         isFetchingTrackers = true
         defer { isFetchingTrackers = false }
         
-        let sources = trackerSource.components(separatedBy: ",").filter { !$0.isEmpty }
-        guard !sources.isEmpty else { return }
+        let sorted = await TrackerService.shared.fetchTrackers()
         
-        var allTrackers: Set<String> = []
-        
-        for source in sources {
-            let urlString = "https://raw.githubusercontent.com/ngosang/trackerslist/master/\(source)"
-            guard let url = URL(string: urlString) else { continue }
-            
-            do {
-                let (data, _) = try await URLSession.shared.data(from: url)
-                if let content = String(data: data, encoding: .utf8) {
-                    let lines = content.components(separatedBy: .newlines)
-                    for line in lines {
-                        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if !trimmed.isEmpty && !trimmed.hasPrefix("#") {
-                            allTrackers.insert(trimmed)
-                        }
-                    }
-                }
-            } catch {
-                print("Failed to fetch trackers from \(source): \(error)")
-            }
-        }
-        
-        // Sort and update text
-        let sorted = allTrackers.sorted()
-        // Format: one per line? or comma separated for aria2? UI usually shows one per line or similar.
-        // aria2 config expects comma-separated. But user might want readability in text box.
-        // Let's assume text box is line-separated for editing, and we join them when saving if needed (or keep as is if creating conf handles formatting)
-        // Motrix usually formats them with empty lines.
-        // Let's format them line by line.
+        // Format for readability in the text editor
         trackerListText = sorted.joined(separator: "\n\n")
     }
     private func openLogDirectory() {
@@ -843,6 +1007,408 @@ struct AdvancedPreferencesTab: View {
             let logUrl = libraryUrl.appendingPathComponent("Logs/MotrixMac")
             try? FileManager.default.createDirectory(at: logUrl, withIntermediateDirectories: true)
             NSWorkspace.shared.open(logUrl)
+        }
+    }
+
+    // MARK: - Developer Paths
+    
+    private var aria2ConfPath: String {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        return appSupport.appendingPathComponent("MotrixMac/aria2.conf").path
+    }
+    
+    private var sessionPath: String {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        return appSupport.appendingPathComponent("MotrixMac/aria2.session").path
+    }
+    
+    private var logFilePath: String {
+        let libraryUrl = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first!
+        return libraryUrl.appendingPathComponent("Logs/MotrixMac/app.log").path
+    }
+    
+    private func resetSession() {
+        Task {
+            await downloadManager.disconnect()
+            let path = sessionPath
+            try? FileManager.default.removeItem(atPath: path)
+            print("PreferencesView: Session cleared at \(path)")
+            await downloadManager.connect()
+        }
+    }
+    
+    private func restoreInitialSettings() {
+        let alert = NSAlert()
+        alert.messageText = "恢复初始设置"
+        alert.informativeText = "此操作将重置所有偏好设置，但不会删除您的下载文件。确定要继续吗？"
+        alert.addButton(withTitle: "恢复")
+        alert.addButton(withTitle: "取消")
+        alert.alertStyle = .warning
+        
+        if alert.runModal() == .alertFirstButtonReturn {
+            // Clear UserDefaults
+            let domain = Bundle.main.bundleIdentifier!
+            UserDefaults.standard.removePersistentDomain(forName: domain)
+            UserDefaults.standard.synchronize()
+            
+            // Reload UI
+            loadActualRuntimeValues()
+            loadOriginals()
+            
+            // Restart engine
+            resetEngine()
+        }
+    }
+}
+
+// MARK: - Components
+
+struct TrackerSourceSelector: View {
+    let sources: [String]
+    @Binding var selection: [String]
+    @Binding var customURLs: String
+    let isFetching: Bool
+    let fetchAction: () -> Void
+    
+    @State private var isPopoverPresented = false
+    @State private var isHovering = false
+    @State private var showingAddURLAlert = false
+    @State private var newURLString = ""
+    
+    var body: some View {
+        HStack(spacing: 8) {
+            Button {
+                isPopoverPresented.toggle()
+            } label: {
+                HStack {
+                    if selection.isEmpty {
+                        Text("选择内置 Tracker 源...")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 4) {
+                                ForEach(selection, id: \.self) { item in
+                                    let isCustom = isURL(item)
+                                    Text(displayName(for: item))
+                                        .font(.system(size: 11, weight: .medium))
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 3)
+                                        .background(isCustom ? Color.orange.opacity(0.12) : Color.accentColor.opacity(0.12))
+                                        .foregroundStyle(isCustom ? .orange : .accentColor)
+                                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                                }
+                            }
+                        }
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.tertiary)
+                        .rotationEffect(.degrees(isPopoverPresented ? 90 : 0))
+                }
+                .padding(.horizontal, 10)
+                .frame(maxWidth: .infinity)
+                .frame(height: 34) // Perfect match
+                .background {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(isHovering ? Color.primary.opacity(0.05) : Color(nsColor: .controlBackgroundColor))
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+                }
+            }
+            .buttonStyle(.plain)
+            .onHover { isHovering = $0 }
+            .popover(isPresented: $isPopoverPresented, arrowEdge: .bottom) {
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack {
+                        Text("选择来源")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(.primary.opacity(0.8))
+                        
+                        Spacer()
+                        
+                        Button {
+                            showingAddURLAlert = true
+                        } label: {
+                            Image(systemName: "plus")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(.secondary)
+                                .padding(8)
+                                .background(Color.primary.opacity(0.06), in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .help("添加自定义订阅 URL")
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.top, 12)
+                    .padding(.bottom, 8)
+                    
+                    Divider()
+                    
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 2) {
+                            // Built-in Sources
+                            ForEach(sources, id: \.self) { source in
+                                sourceRow(name: source, isCustom: false)
+                            }
+                            
+                            // Custom Sources
+                            let customList = customURLs.components(separatedBy: .newlines).filter { !$0.isEmpty }
+                            if !customList.isEmpty {
+                                Divider().padding(.vertical, 4)
+                                Text("自定义订阅")
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundStyle(.tertiary)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 4)
+                                
+                                ForEach(customList, id: \.self) { url in
+                                    sourceRow(name: url, isCustom: true)
+                                }
+                            }
+                        }
+                        .padding(6)
+                    }
+                    .frame(height: 220)
+                    
+                    Divider()
+                    
+                    HStack {
+                        // Logic to determine "Select All" or "Clear All" state
+                        let customList = customURLs.components(separatedBy: .newlines).filter { !$0.isEmpty }
+                        let allSources = sources + customList
+                        let isAllSelected = Set(selection).isSuperset(of: Set(allSources)) && !allSources.isEmpty
+                        
+                        Button {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                if isAllSelected {
+                                    selection.removeAll()
+                                } else {
+                                    // Select all unique sources
+                                    selection = Array(Set(allSources)).sorted { s1, s2 in
+                                        // Maintain relative order: built-in first, then custom
+                                        let idx1 = allSources.firstIndex(of: s1) ?? Int.max
+                                        let idx2 = allSources.firstIndex(of: s2) ?? Int.max
+                                        return idx1 < idx2
+                                    }
+                                }
+                            }
+                        } label: {
+                            Text(isAllSelected ? "清空已选" : "全选")
+                                .font(.system(size: 13, weight: .medium))
+                                .frame(width: 80, height: 28)
+                                .background(Color.gray.opacity(0.15), in: Capsule())
+                                .foregroundStyle(.primary.opacity(0.8))
+                        }
+                        .buttonStyle(SidebarButtonStyle())
+                        
+                        Spacer()
+                        
+                        Button {
+                            isPopoverPresented = false
+                        } label: {
+                            Text("确定")
+                                .font(.system(size: 13, weight: .semibold))
+                                .frame(width: 80, height: 28)
+                                .background(Color.accentColor, in: Capsule())
+                                .foregroundStyle(.white)
+                        }
+                        .buttonStyle(SidebarButtonStyle())
+                    }
+                    .padding(12)
+                    .background(Color.primary.opacity(0.02))
+                }
+                .frame(width: 280)
+                .background(.ultraThinMaterial)
+            }
+            .sheet(isPresented: $showingAddURLAlert) {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("添加自定义订阅 URL")
+                        .font(.headline)
+                    
+                    Text("请输入一个包含 Tracker 列表的完整 URL 地址。")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    
+                    TextField("https://example.com/trackers.txt", text: $newURLString)
+                        .textFieldStyle(.plain)
+                        .padding(8)
+                        .background {
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color(nsColor: .controlBackgroundColor))
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+                        }
+                        .frame(maxWidth: .infinity)
+                    
+                    HStack {
+                        Spacer()
+                        Button("取消") {
+                            showingAddURLAlert = false
+                            newURLString = ""
+                        }
+                        .buttonStyle(.bordered)
+                        
+                        Button("添加") {
+                            if !newURLString.isEmpty {
+                                var current = customURLs.components(separatedBy: .newlines).filter { !$0.isEmpty }
+                                if !current.contains(newURLString) {
+                                    current.append(newURLString)
+                                    customURLs = current.joined(separator: "\n")
+                                    // [NEW] Auto-fetch immediately
+                                    fetchAction()
+                                }
+                                newURLString = ""
+                                showingAddURLAlert = false
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(newURLString.isEmpty)
+                    }
+                }
+                .padding(20)
+                .frame(width: 360)
+            }
+            
+            Button {
+                fetchAction()
+            } label: {
+                Image(systemName: "arrow.clockwise.circle.fill")
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(Color.accentColor)
+                    .font(.system(size: 24))
+                    .rotationEffect(.degrees(isFetching ? 360 : 0))
+                    .animation(isFetching ? .linear(duration: 1).repeatForever(autoreverses: false) : .default, value: isFetching)
+            }
+            .buttonStyle(.plain)
+            .disabled(isFetching)
+            .help("立即同步 Tracker 列表")
+        }
+    }
+    
+    @ViewBuilder
+    private func sourceRow(name: String, isCustom: Bool) -> some View {
+        HStack(spacing: 0) {
+            Button {
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
+                    if selection.contains(name) {
+                        selection.removeAll { $0 == name }
+                    } else {
+                        selection.append(name)
+                    }
+                }
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: selection.contains(name) ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(selection.contains(name) ? .blue : .secondary)
+                        .font(.system(size: 16))
+                    
+                    Text(displayName(for: name))
+                        .font(.system(size: 13, weight: selection.contains(name) ? .medium : .regular))
+                        .foregroundStyle(selection.contains(name) ? .primary : .secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            
+            if isCustom {
+                Button {
+                    withAnimation {
+                        var current = customURLs.components(separatedBy: .newlines).filter { !$0.isEmpty }
+                        current.removeAll { $0 == name }
+                        customURLs = current.joined(separator: "\n")
+                        selection.removeAll { $0 == name }
+                    }
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.red.opacity(0.7))
+                        .padding(8)
+                        .background(.red.opacity(0.1), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 10)
+            }
+        }
+        .background {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(selection.contains(name) ? Color.accentColor.opacity(0.08) : Color.primary.opacity(0.03))
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 2)
+    }
+    
+    private func isURL(_ string: String) -> Bool {
+        string.lowercased().hasPrefix("http")
+    }
+    
+    private func displayName(for string: String) -> String {
+        guard isURL(string), let url = URL(string: string) else {
+            return string
+        }
+        // Return host or last path component for URLs to keep tags short
+        return url.lastPathComponent.isEmpty ? (url.host ?? string) : url.lastPathComponent
+    }
+    
+    private let availableTrackers = [
+        "trackers_best.txt",
+        "trackers_best_ip.txt",
+        "trackers_all.txt",
+        "trackers_all_ip.txt"
+    ]
+}
+
+struct PathRow: View {
+    let label: String
+    let path: String
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
+            
+            HStack(spacing: 8) {
+                Text(path)
+                    .font(.system(size: 11, design: .monospaced))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background {
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color.primary.opacity(0.05))
+                    }
+                
+                Button {
+                    let pasteboard = NSPasteboard.general
+                    pasteboard.clearContents()
+                    pasteboard.setString(path, forType: .string)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.bordered)
+                .help("复制路径")
+                
+                Button {
+                    let url = URL(fileURLWithPath: path).deletingLastPathComponent()
+                    NSWorkspace.shared.open(url)
+                } label: {
+                    Image(systemName: "folder")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.bordered)
+                .help("在 Finder 中显示")
+            }
         }
     }
 }

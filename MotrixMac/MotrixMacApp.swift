@@ -1,11 +1,14 @@
 import SwiftUI
 import UserNotifications
 import Sparkle
+import Network
 
 // Notification for opening main window
 extension Notification.Name {
     static let openSettings = Notification.Name("openSettings")
     static let saveSettings = Notification.Name("saveSettings")
+    static let discardSettings = Notification.Name("discardSettings")
+    static let openMainWindow = Notification.Name("openMainWindow")
 }
 
 @main
@@ -34,7 +37,14 @@ struct MotrixMacApp: App {
                     openWindow(id: "main")
                 }
                 .onOpenURL { url in
-                    URLSchemeHandler.shared.handle(url)
+                    // Handle file URLs (double-clicked .torrent files)
+                    if url.isFileURL && url.pathExtension.lowercased() == "torrent" {
+                        DownloadManager.shared.pendingTorrentURL = url
+                        DownloadManager.shared.showAddTorrentSheet = true
+                    } else {
+                        // Handle URL schemes (magnet, thunder, etc)
+                        URLSchemeHandler.shared.handle(url)
+                    }
                 }
         }
         .windowStyle(.hiddenTitleBar)
@@ -163,6 +173,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // Sparkle updater controller
     let updaterController: SPUStandardUpdaterController
     
+    // Network listener to trigger firewall prompt
+    private var dummyListener: NWListener?
+    
     override init() {
         // Initialize Sparkle
         self.updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
@@ -238,6 +251,64 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
+        
+        // Prompt to set as default torrent app on first launch
+        promptSetAsDefaultTorrentApp()
+        
+        // Trigger firewall/network permission check
+        triggerNetworkPermissionCheck()
+    }
+
+    /// Triggers a dummy network listener to force macOS to display the Firewall/Local Network permission prompt
+    private func triggerNetworkPermissionCheck() {
+        let hasChecked = UserDefaults.standard.bool(forKey: "hasCheckedNetworkPermission")
+        if hasChecked { return }
+        
+        // Mark as checked to avoid nagging every time
+        UserDefaults.standard.set(true, forKey: "hasCheckedNetworkPermission")
+        
+        // Create a dummy listener on a random port
+        do {
+            // "using: .tcp" defaults to random port
+            let listener = try NWListener(using: .tcp)
+            
+            // Critical: valid listeners must handle new connections
+            listener.newConnectionHandler = { _ in }
+            
+            listener.stateUpdateHandler = { newState in
+                switch newState {
+                case .ready:
+                    print("NetworkCheck: Successfully bound to port \(listener.port?.rawValue ?? 0). Firewall prompt should appear if not already allowed.")
+                    // Stop it immediately once it's ready, the prompt trigger happened at bind attempt
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        listener.cancel()
+                        self.dummyListener = nil
+                    }
+                case .failed(let error):
+                    print("NetworkCheck: Failed to bind dummy listener: \(error)")
+                    listener.cancel()
+                    self.dummyListener = nil
+                default:
+                    break
+                }
+            }
+            
+            listener.start(queue: .global())
+            self.dummyListener = listener
+            
+            // Optional: Inform the user why we are doing this
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                let alert = NSAlert()
+                alert.messageText = "网络连接权限请求"
+                alert.informativeText = "为了确保 BT 下载速度和 UPnP 端口映射正常工作，MotrixMac 需要使用网络端口。\n\n如果 macOS 弹出「是否允许传入连接」或「本地网络权限」的提示，请务必选择【允许】。"
+                alert.alertStyle = .informational
+                alert.addButton(withTitle: "明白了")
+                alert.runModal()
+            }
+            
+        } catch {
+            print("NetworkCheck: Error creating listener: \(error)")
+        }
     }
 
     @objc private func dockPreferenceChanged() {
@@ -290,6 +361,67 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // URL handling moved to .onOpenURL in MotrixMacApp
+    
+    // MARK: - File Opening (Torrent files)
+    
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls {
+            if url.pathExtension.lowercased() == "torrent" {
+                handleTorrentFile(url)
+            }
+        }
+    }
+    
+    private func handleTorrentFile(_ url: URL) {
+        // Bring app to front
+        NSApp.activate(ignoringOtherApps: true)
+        DownloadManager.shared.shouldOpenMainWindow = true
+        
+        // Set pending torrent URL and show sheet
+        DownloadManager.shared.pendingTorrentURL = url
+        DownloadManager.shared.showAddTorrentSheet = true
+    }
+    
+    /// Check and prompt user to set as default torrent handler on first launch
+    func promptSetAsDefaultTorrentApp() {
+        let hasPrompted = UserDefaults.standard.bool(forKey: "hasPromptedDefaultTorrentApp")
+        guard !hasPrompted else { return }
+        
+        // Mark as prompted regardless of user choice
+        UserDefaults.standard.set(true, forKey: "hasPromptedDefaultTorrentApp")
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            let alert = NSAlert()
+            alert.messageText = "使用 MotrixMac 打开种子文件？"
+            alert.informativeText = "将 MotrixMac 设为默认的 .torrent 文件处理程序，双击种子文件即可快速开始下载。"
+            alert.alertStyle = .informational
+            alert.addButton(withTitle: "设为默认")
+            alert.addButton(withTitle: "暂不设置")
+            
+            let response = alert.runModal()
+            if response == .alertFirstButtonReturn {
+                self.setAsDefaultTorrentApp()
+            }
+        }
+    }
+    
+    private func setAsDefaultTorrentApp() {
+        guard let bundleIdentifier = Bundle.main.bundleIdentifier else { return }
+        
+        // Set as default handler for .torrent files using CoreServices
+        LSSetDefaultRoleHandlerForContentType(
+            "org.bittorrent.torrent" as CFString,
+            .all,
+            bundleIdentifier as CFString
+        )
+        
+        // Also try with public.bittorrent
+        LSSetDefaultRoleHandlerForContentType(
+            "public.bittorrent-torrent" as CFString,
+            .all,
+            bundleIdentifier as CFString
+        )
+    }
 }
 
 extension AppDelegate: UNUserNotificationCenterDelegate {

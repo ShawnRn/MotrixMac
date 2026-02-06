@@ -39,11 +39,11 @@ struct TaskItemView: View {
                         onThumbnailImageChanged(image)
                     })
                 } else {
-                    FileIconView(fileType: task.fileType)
+                    FileIconView(fileType: task.fileType, size: 44)
                         .frame(width: 44, height: 44)
                         .onAppear {
                             // 使用 ImageRenderer 获取包含背景颜色的完整图标快照
-                            let iconView = FileIconView(fileType: task.fileType)
+                            let iconView = FileIconView(fileType: task.fileType, size: 44)
                                 .frame(width: 44, height: 44)
                             let renderer = ImageRenderer(content: iconView)
                             renderer.scale = 2.0 // 适配 Retina 屏幕
@@ -69,7 +69,7 @@ struct TaskItemView: View {
             // Task info (Top & Bottom)
             VStack(alignment: .leading, spacing: 6) {
                 // Row 1: File name (Headline)
-                Text(task.name)
+                Text(task.effectiveName)
                     .font(.headline)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -107,7 +107,7 @@ struct TaskItemView: View {
             Spacer()
             
             // Row 3 (Right): Action Buttons
-            // Only visible on hover or selection, but layout preserved to avoid jumps
+            // Only visible on hover , but layout preserved to avoid jumps
             Group {
                 if isHovering || isSelected {
                     TaskActionButtons(
@@ -139,7 +139,7 @@ struct TaskItemView: View {
         }
         .sheet(isPresented: $showDeleteConfirmation) {
             DeleteConfirmationSheet(
-                taskName: task.name,
+                taskName: task.effectiveName,
                 deleteFiles: $deleteFiles,
                 rememberChoice: $rememberChoice,
                 onConfirm: {
@@ -166,14 +166,15 @@ struct TaskItemView: View {
 
 struct FileIconView: View {
     let fileType: FileType
+    let size: CGFloat
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: size * 0.22, style: .continuous)
                 .fill(fileType.color.gradient)
 
             Image(systemName: fileType.icon)
-                .font(.system(size: 20, weight: .medium))
+                .font(.system(size: size * 0.45, weight: .medium))
                 .foregroundStyle(.white)
         }
     }
@@ -200,8 +201,10 @@ struct StatusBadge: View {
     }
 
     private var displayText: String {
-        if let display = displayStatus, display == "Connecting..." {
-            return "连接中..."
+        if let display = displayStatus {
+            if display == "Connecting..." { return "连接中..." }
+            if display == "做种中" { return "做种中" }
+            if display == "下载中" { return "下载中" }
         }
 
         switch status {
@@ -216,8 +219,9 @@ struct StatusBadge: View {
     }
 
     private var badgeColor: Color {
-        if let display = displayStatus, display == "Connecting..." {
-            return .blue
+        if let display = displayStatus {
+            if display == "Connecting..." { return .blue }
+            if display == "做种中" { return .indigo }
         }
 
         switch status {
@@ -243,7 +247,12 @@ struct TaskActionButtons: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            if task.canPause {
+            if task.isSeeding {
+                ActionButton(icon: "stop.fill", color: .red) {
+                    Task { await downloadManager.stopSeeding(task) }
+                }
+                .help("停止做种")
+            } else if task.canPause {
                 ActionButton(icon: "pause.fill", color: .orange) {
                     Task { await downloadManager.pauseTask(task) }
                 }
@@ -263,6 +272,8 @@ struct TaskActionButtons: View {
                 }
                 .help(task.status == "removed" ? "重新下载" : "重试")
             }
+
+
 
             ActionButton(icon: "folder", color: .blue) {
                 downloadManager.revealInFinder(task)
@@ -319,7 +330,11 @@ struct TaskContextMenu: View {
 
     var body: some View {
         Group {
-            if task.canPause {
+            if task.isSeeding {
+                Button("停止做种") {
+                    Task { await downloadManager.stopSeeding(task) }
+                }
+            } else if task.canPause {
                 Button("暂停") {
                     Task { await downloadManager.pauseTask(task) }
                 }
@@ -377,58 +392,76 @@ struct DeleteConfirmationSheet: View {
     let onCancel: () -> Void
 
     var body: some View {
-        VStack(spacing: 20) {
-            HStack(spacing: 16) {
-                // Simplified, solid icon for a cleaner look
+        VStack(spacing: 24) {
+            HStack(alignment: .top, spacing: 20) {
+                // Icon block
                 ZStack {
                     Circle()
-                        .fill(.red.opacity(0.1))
-                        .frame(width: 52, height: 52)
+                        .fill(Color.red.opacity(0.12))
+                        .frame(width: 48, height: 48)
                     
                     Image(systemName: "trash.fill")
-                        .font(.system(size: 24))
-                        .foregroundStyle(.red)
+                        .font(.system(size: 20))
+                        .foregroundStyle(Color.red)
                 }
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("确认移除此任务记录？")
-                        .font(.headline)
-                    Text(taskName)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                VStack(alignment: .leading, spacing: 16) {
+                    // Question text
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("确认移除任务？")
+                            .font(.system(size: 16, weight: .bold))
+                        Text(taskName)
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    
+                    // Options
+                    VStack(alignment: .leading, spacing: 10) {
+                        Toggle("同时删除本地文件", isOn: $deleteFiles)
+                            .toggleStyle(.checkbox)
+                        Toggle("以后不再询问", isOn: $rememberChoice)
+                            .toggleStyle(.checkbox)
+                    }
+                    .font(.system(size: 13))
                 }
-                Spacer()
-            }
-
-            VStack(alignment: .leading, spacing: 12) {
-                Toggle("同时删除本地文件", isOn: $deleteFiles)
-                    .toggleStyle(.checkbox)
-
-                Toggle("以后不再询问", isOn: $rememberChoice)
-                    .toggleStyle(.checkbox)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            HStack {
-                Button("取消") {
+            // Footer buttons
+            HStack(spacing: 12) {
+                Button {
                     onCancel()
+                } label: {
+                    Text("取消")
+                        .font(.system(size: 13, weight: .medium))
+                        .frame(width: 80, height: 28)
+                        .background(Color.gray.opacity(0.15), in: Capsule())
+                        .foregroundStyle(.primary.opacity(0.8))
                 }
-                .keyboardShortcut(.cancelAction)
+                .buttonStyle(.plain)
+                .buttonStyle(SidebarButtonStyle())
+                .keyboardShortcut(.escape, modifiers: [])
 
                 Spacer()
 
-                Button("确认移除", role: .destructive) {
+                Button {
                     onConfirm()
+                } label: {
+                    Text("确定")
+                        .font(.system(size: 13, weight: .semibold))
+                        .frame(width: 80, height: 28)
+                        .background(Color.red, in: Capsule())
+                        .foregroundStyle(.white)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.red)
-                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.plain)
+                .buttonStyle(SidebarButtonStyle())
+                .keyboardShortcut(.return, modifiers: .command)
             }
         }
         .padding(24)
-        .frame(width: 360)
+        .frame(width: 380)
     }
 }
 

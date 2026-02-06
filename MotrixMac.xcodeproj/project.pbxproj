@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		46533E692F21BA1F007F2C3E /* Starscream in Frameworks */ = {isa = PBXBuildFile; productRef = 46533E682F21BA1F007F2C3E /* Starscream */; };
+		46BF654E2F33732900CF4B8E /* MaxMindDB in Frameworks */ = {isa = PBXBuildFile; productRef = 46BF654D2F33732900CF4B8E /* MaxMindDB */; };
 		46C051B72F2841AF00440FFE /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 46C051B62F2841AF00440FFE /* Sparkle */; };
 /* End PBXBuildFile section */
 
@@ -55,6 +56,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				46533E692F21BA1F007F2C3E /* Starscream in Frameworks */,
+				46BF654E2F33732900CF4B8E /* MaxMindDB in Frameworks */,
 				46C051B72F2841AF00440FFE /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -62,10 +64,18 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		46AAB1812F33260C000DB07C /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		46AC07122F21B85C0079AAD2 = {
 			isa = PBXGroup;
 			children = (
 				46AC071D2F21B85C0079AAD2 /* MotrixMac */,
+				46AAB1812F33260C000DB07C /* Frameworks */,
 				46AC071C2F21B85C0079AAD2 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -101,6 +111,7 @@
 			packageProductDependencies = (
 				46533E682F21BA1F007F2C3E /* Starscream */,
 				46C051B62F2841AF00440FFE /* Sparkle */,
+				46BF654D2F33732900CF4B8E /* MaxMindDB */,
 			);
 			productName = MotrixMac;
 			productReference = 46AC071B2F21B85C0079AAD2 /* MotrixMac.app */;
@@ -114,7 +125,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2620;
-				LastUpgradeCheck = 2620;
+				LastUpgradeCheck = 2630;
 				TargetAttributes = {
 					46AC071A2F21B85C0079AAD2 = {
 						CreatedOnToolsVersion = 26.2;
@@ -133,6 +144,7 @@
 			packageReferences = (
 				46533E672F21BA1F007F2C3E /* XCRemoteSwiftPackageReference "Starscream" */,
 				46C051B52F2841AF00440FFE /* XCRemoteSwiftPackageReference "Sparkle" */,
+				46BF654C2F33732900CF4B8E /* XCRemoteSwiftPackageReference "MaxMindDBSwift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 46AC071C2F21B85C0079AAD2 /* Products */;
@@ -199,6 +211,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = A4P8NY6A4J;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -224,6 +237,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -263,6 +277,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = A4P8NY6A4J;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -281,6 +296,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 			};
 			name = Release;
@@ -294,7 +310,8 @@
 				CODE_SIGN_ENTITLEMENTS = MotrixMac/MotrixMac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2026020202;
+				CURRENT_PROJECT_VERSION = 2026020500;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = A4P8NY6A4J;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -306,7 +323,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
-				MARKETING_VERSION = 1.1.4;
+				MARKETING_VERSION = 1.1.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.shawnrain.MotrixMac;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -328,7 +345,8 @@
 				CODE_SIGN_ENTITLEMENTS = MotrixMac/MotrixMac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2026020202;
+				CURRENT_PROJECT_VERSION = 2026020500;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = A4P8NY6A4J;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -340,7 +358,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
-				MARKETING_VERSION = 1.1.4;
+				MARKETING_VERSION = 1.1.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.shawnrain.MotrixMac;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -385,6 +403,14 @@
 				minimumVersion = 4.0.8;
 			};
 		};
+		46BF654C2F33732900CF4B8E /* XCRemoteSwiftPackageReference "MaxMindDBSwift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/SunboyGo/MaxMindDBSwift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.1.2;
+			};
+		};
 		46C051B52F2841AF00440FFE /* XCRemoteSwiftPackageReference "Sparkle" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/sparkle-project/Sparkle";
@@ -400,6 +426,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 46533E672F21BA1F007F2C3E /* XCRemoteSwiftPackageReference "Starscream" */;
 			productName = Starscream;
+		};
+		46BF654D2F33732900CF4B8E /* MaxMindDB */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 46BF654C2F33732900CF4B8E /* XCRemoteSwiftPackageReference "MaxMindDBSwift" */;
+			productName = MaxMindDB;
 		};
 		46C051B62F2841AF00440FFE /* Sparkle */ = {
 			isa = XCSwiftPackageProductDependency;
