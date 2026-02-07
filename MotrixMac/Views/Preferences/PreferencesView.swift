@@ -230,22 +230,21 @@ struct DownloadsPreferencesTab: View {
             Section {
                 Stepper("最大同时下载数：\(maxConcurrent)", value: $maxConcurrent, in: 1...10)
                 
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("单任务最大线程数：\(defaultConnections)")
-                        Spacer()
-                    }
+                HStack {
+                    Text("单任务最大线程数：\(defaultConnections)")
+                        .fixedSize()
+                    Spacer()
                     Slider(value: Binding(
                         get: { Double(defaultConnections) },
                         set: { defaultConnections = Int($0) }
                     ), in: 1...128) {
-                        Text("线程数")
+                        EmptyView()
                     }
+                    .frame(width: 280)
                     .onChange(of: defaultConnections) { _, _ in
                         saveConnections()
                     }
                 }
-                .padding(.vertical, 4)
 
                 Toggle("断点续传", isOn: $continueDownload)
             } header: {

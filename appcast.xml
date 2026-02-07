@@ -5,7 +5,7 @@
         <item>
             <title>1.1.5</title>
             <pubDate>Fri, 06 Feb 2026 20:57:17 +0800</pubDate>
-            <sparkle:version>2026020600</sparkle:version>
+            <sparkle:version>2026020500</sparkle:version>
             <sparkle:shortVersionString>1.1.5</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>15.6</sparkle:minimumSystemVersion>
             <enclosure url="https://github.com/ShawnRn/MotrixMac/releases/download/v1.1.5/MotrixMac_1.1.5.dmg" type="application/octet-stream" sparkle:edSignature="qGMJSfufuNAvT72g60lhg6VRXLRg3ENvvU7Wgo9ffh+eMqLORQEYIfq5SqMRXoZuZWjNhMF//fxeMtPJeE/+BQ==" length="11461543"/>
