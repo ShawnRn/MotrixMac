@@ -10,6 +10,7 @@ struct SidebarView: View {
     
     @Namespace private var sidebarNamespace
     @Environment(\.colorScheme) private var colorScheme
+    @AppStorage("singleListMode") private var singleListMode = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -21,18 +22,43 @@ struct SidebarView: View {
             // Navigation items - task categories
             VStack(spacing: 8) {
                 ForEach(TaskCategory.taskCategories) { category in
-                    SidebarItem(
-                        category: category,
-                        isSelected: selectedCategory == category,
-                        isHovered: hoveredCategory == category,
-                        count: downloadManager.taskCount(for: category),
-                        namespace: sidebarNamespace
-                    ) {
-                        onSelect(category)
-                    }
-                    .onHover { isHovered in
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            hoveredCategory = isHovered ? category : nil
+                    // Single List Mode Logic
+                    if singleListMode {
+                        if category == .completed {
+                            // Skip "Completed" tab in single list mode
+                            EmptyView()
+                        } else {
+                            SidebarItem(
+                                category: category,
+                                isSelected: selectedCategory == category,
+                                isHovered: hoveredCategory == category,
+                                count: downloadManager.taskCount(for: category),
+                                namespace: sidebarNamespace,
+                                customTitle: category == .downloading ? "所有任务" : nil // Rename "Downloading"
+                            ) {
+                                onSelect(category)
+                            }
+                            .onHover { isHovered in
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    hoveredCategory = isHovered ? category : nil
+                                }
+                            }
+                        }
+                    } else {
+                        // Standard Mode
+                        SidebarItem(
+                            category: category,
+                            isSelected: selectedCategory == category,
+                            isHovered: hoveredCategory == category,
+                            count: downloadManager.taskCount(for: category),
+                            namespace: sidebarNamespace
+                        ) {
+                            onSelect(category)
+                        }
+                        .onHover { isHovered in
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                hoveredCategory = isHovered ? category : nil
+                            }
                         }
                     }
                 }
@@ -116,6 +142,7 @@ struct SidebarItem: View {
     let isHovered: Bool
     let count: Int
     let namespace: Namespace.ID
+    var customTitle: String? = nil
     let action: () -> Void
 
     var body: some View {
@@ -126,7 +153,7 @@ struct SidebarItem: View {
                     .frame(width: 20)
                     .foregroundStyle(isSelected ? .white : .primary)
 
-                Text(category.title)
+                Text(customTitle ?? category.title)
                     .font(.system(size: 14, weight: .regular))
                     .foregroundStyle(isSelected ? .white : .primary)
 

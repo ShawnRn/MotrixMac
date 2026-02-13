@@ -37,6 +37,15 @@ struct AboutView: View {
     ]
     @State private var changelogs: [ChangelogItem] = [
         ChangelogItem(
+            version: "1.1.6",
+            date: "2026-02-13",
+            changes: [
+                "新增「单列表模式」：合并下载中和已完成任务，专注当前任务。",
+                "优化了设置界面，新增功能说明。",
+                "修复了 BT 下载的 bugs。"
+            ]
+        ),
+        ChangelogItem(
             version: "1.1.5",
             date: "2026-02-06",
             changes: [
@@ -198,7 +207,7 @@ struct AboutView: View {
                         Text("MotrixMac")
                             .font(.system(size: 24, weight: .semibold))
                             
-                        Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0") (\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"))")
+                        Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1.6") (\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "2026021300"))")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             

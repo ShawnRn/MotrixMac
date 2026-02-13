@@ -837,9 +837,15 @@ struct TaskListHeader: View {
             // Layer 1: Title (Absolute Leading)
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(category.title)
-                        .font(.title2)
-                        .fontWeight(.semibold)
+                    if category == .downloading && downloadManager.singleListMode {
+                        Text("所有任务")
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                    } else {
+                        Text(category.title)
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                    }
 
                     Text("\(taskCount) 个任务")
                         .font(.subheadline)

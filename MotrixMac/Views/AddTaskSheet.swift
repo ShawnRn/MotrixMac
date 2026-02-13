@@ -361,6 +361,7 @@ struct AddTorrentSheet: View {
         case image = "图片"
     }
     @State private var currentFilter: FileFilter = .all
+    @State private var showNoFileSelectedAlert = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -705,6 +706,11 @@ struct AddTorrentSheet: View {
                 downloadManager.pendingTorrentURL = nil
             }
         }
+        .alert("未选择文件", isPresented: $showNoFileSelectedAlert) {
+            Button("确定", role: .cancel) { }
+        } message: {
+            Text("请至少选择一个文件以开始下载。")
+        }
     }
 
     private func selectTorrentFile() {
@@ -750,57 +756,63 @@ struct AddTorrentSheet: View {
     private func addTorrent() {
         guard let url = torrentURL else { return }
 
-        Task {
-            do {
-                let data = try Data(contentsOf: url)
-                let base64 = data.base64EncodedString()
-                
-                var options: [String: Any] = [
-                    "dir": saveDirectory.path(percentEncoded: false)
-                ]
-                
-                // File selection: if not all files selected, pass select-file option
-                if !selectedFileIndices.isEmpty && selectedFileIndices.count < parsedFiles.count {
-                    // aria2 uses 1-indexed file indices
-                    let selectedIndices = selectedFileIndices.sorted().map { $0 + 1 }.map(String.init).joined(separator: ",")
-                    options["select-file"] = selectedIndices
+                if !parsedFiles.isEmpty && selectedFileIndices.isEmpty {
+                    showNoFileSelectedAlert = true
+                    return
                 }
                 
-                // Explicitly pass global connection settings
-                if defaultConnections > 0 {
-                    options["split"] = defaultConnections
-                    options["max-connection-per-server"] = defaultConnections
-                }
-                
-                // Advanced options
-                if !customUserAgent.isEmpty {
-                    options["user-agent"] = customUserAgent
-                }
-                if !customReferer.isEmpty {
-                    options["referer"] = customReferer
-                }
-                if !customCookie.isEmpty {
-                    options["header"] = "Cookie: \(customCookie)"
-                }
-                if !customProxy.isEmpty {
-                    options["all-proxy"] = customProxy
-                }
-                
-                try await downloadManager.addTorrent(
-                    base64: base64,
-                    options: options
-                )
-                await MainActor.run {
-                    if autoJumpOnTaskCreated {
-                        downloadManager.currentCategory = .downloading
+                Task {
+                    do {
+                        let data = try Data(contentsOf: url)
+                        let base64 = data.base64EncodedString()
+                        
+                        var options: [String: Any] = [
+                            "dir": saveDirectory.path(percentEncoded: false)
+                        ]
+                        
+                        // File selection: if not all files selected, pass select-file option
+                        if !selectedFileIndices.isEmpty && selectedFileIndices.count < parsedFiles.count {
+                            // aria2 uses 1-indexed file indices
+                            let selectedIndices = selectedFileIndices.sorted().map { $0 + 1 }.map(String.init).joined(separator: ",")
+                            options["select-file"] = selectedIndices
+                        }
+                        
+                        // Explicitly pass global connection settings
+                        if defaultConnections > 0 {
+                            options["split"] = defaultConnections
+                            options["max-connection-per-server"] = defaultConnections
+                        }
+                        
+                        // Advanced options
+                        if !customUserAgent.isEmpty {
+                            options["user-agent"] = customUserAgent
+                        }
+                        if !customReferer.isEmpty {
+                            options["referer"] = customReferer
+                        }
+                        if !customCookie.isEmpty {
+                            options["header"] = "Cookie: \(customCookie)"
+                        }
+                        if !customProxy.isEmpty {
+                            options["all-proxy"] = customProxy
+                        }
+                        
+                        try await downloadManager.addTorrent(
+                            base64: base64,
+                            options: options
+                        )
+                        await MainActor.run {
+                            if autoJumpOnTaskCreated {
+                                downloadManager.currentCategory = .downloading
+                            }
+                            dismiss()
+                        }
+                    } catch {
+                        // Handle error
                     }
-                    dismiss()
                 }
-            } catch {
-                // Handle error
             }
-        }
-    }
+
     
     private func parseTorrent(url: URL) {
         print("Parsing torrent from: \(url.path)")

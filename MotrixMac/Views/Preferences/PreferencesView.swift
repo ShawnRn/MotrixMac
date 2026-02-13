@@ -124,6 +124,7 @@ struct GeneralPreferencesTab: View {
     @AppStorage("autoJumpOnTaskCreated") private var autoJumpOnTaskCreated = true
     @AppStorage("skipDeleteConfirmation") private var skipDeleteConfirmation = false
     @AppStorage("showInDock") private var showInDock = true
+    @AppStorage("singleListMode") private var singleListMode = false
 
     var body: some View {
         Form {
@@ -133,18 +134,43 @@ struct GeneralPreferencesTab: View {
                         updateLaunchAtLogin(enabled: newValue)
                     }
 
-                Toggle("静默启动", isOn: $silentStart)
+                InfoToggle(
+                    title: "静默启动",
+                    info: "启用后，开机启动时不会自动显示主窗口",
+                    isOn: $silentStart
+                )
                     .disabled(!launchAtLogin)
                     .foregroundColor(launchAtLogin ? .primary : .secondary)
-                    .help("启用后，开机启动时不会自动显示主窗口")
 
-                Toggle("在 Dock 中显示", isOn: $showInDock)
+                InfoToggle(
+                    title: "在 Dock 中显示",
+                    info: "是否在 macOS Dock 栏显示应用图标",
+                    isOn: $showInDock
+                )
 
-                Toggle("在菜单栏显示速度", isOn: $showSpeedInMenuBar)
+                InfoToggle(
+                    title: "在菜单栏显示速度",
+                    info: "在系统菜单栏实时显示当前下载和上传速度",
+                    isOn: $showSpeedInMenuBar
+                )
                 
-                Toggle("新建任务后自动跳转到下载页面", isOn: $autoJumpOnTaskCreated)
+                InfoToggle(
+                    title: "自动跳转到下载页面",
+                    info: "新建任务后自动跳转到下载页面",
+                    isOn: $autoJumpOnTaskCreated
+                )
                 
-                Toggle("删除任务前无需确认", isOn: $skipDeleteConfirmation)
+                InfoToggle(
+                    title: "快速删除任务",
+                    info: "删除任务前无需确认",
+                    isOn: $skipDeleteConfirmation
+                )
+
+                InfoToggle(
+                    title: "单列表模式",
+                    info: "融合下载中和已完成列表，将所有任务显示在同一个视图中。",
+                    isOn: $singleListMode
+                )
             }
 
             Section {
@@ -304,10 +330,23 @@ struct DownloadsPreferencesTab: View {
             }
 
             Section {
-                Toggle("保存磁力链接元数据为种子文件", isOn: $btSaveMetadata)
-                Toggle("自动开始下载磁力链接、种子文件", isOn: $btAutoStart)
+                InfoToggle(
+                    title: "保存磁力链接元数据为种子文件",
+                    info: "下载磁力链接时，自动保存 .torrent 种子文件到下载目录",
+                    isOn: $btSaveMetadata
+                )
                 
-                Toggle("持续做种，直到手动停止", isOn: $btContinuousSeeding)
+                InfoToggle(
+                    title: "自动开始下载磁力链接、种子文件",
+                    info: "添加任务后自动开始下载，无需手动确认",
+                    isOn: $btAutoStart
+                )
+                
+                InfoToggle(
+                    title: "持续做种，直到手动停止",
+                    info: "任务完成后继续做种，直到手动移除或暂停",
+                    isOn: $btContinuousSeeding
+                )
                 
                 if !btContinuousSeeding {
                     HStack {
@@ -437,10 +476,17 @@ struct NetworkPreferencesTab: View {
             }
 
             Section {
-                Toggle("启用 IPv6", isOn: $enableIPv6)
-                    .help("如果您的网络环境不支持 IPv6，启用此选项可能导致连接超时。")
-                Toggle("启用异步 DNS", isOn: $enableAsyncDNS)
-                    .help("启用 aria2 内置的异步 DNS 解析。如果您使用了代理软件，建议关闭此选项以防止 DNS 污染。")
+                InfoToggle(
+                    title: "启用 IPv6",
+                    info: "如果您的网络环境不支持 IPv6，启用此选项可能导致连接超时。",
+                    isOn: $enableIPv6
+                )
+                
+                InfoToggle(
+                    title: "启用异步 DNS",
+                    info: "启用 aria2 内置的异步 DNS 解析。如果您使用了代理软件，建议关闭此选项以防止 DNS 污染。",
+                    isOn: $enableAsyncDNS
+                )
             } header: {
                 Text("高级网络")
             }
@@ -705,9 +751,23 @@ struct AdvancedPreferencesTab: View {
 
             // Privacy & BitTorrent Settings
             Section {
-                Toggle("启用 DHT (去中心化网络) 以找到更多用户", isOn: $enableDht)
-                Toggle("启用用户交换 (PeX) 以找到更多用户", isOn: $enablePex)
-                Toggle("启用本地用户发现 (LPD) 以找到更多用户", isOn: $enableLpd)
+                InfoToggle(
+                    title: "启用 DHT (去中心化网络)",
+                    info: "启用 Distributed Hash Table 以找到更多用户 (Peers)",
+                    isOn: $enableDht
+                )
+                
+                InfoToggle(
+                    title: "启用用户交换 (PeX)",
+                    info: "启用 Peer Exchange 以找到更多用户 (Peers)",
+                    isOn: $enablePex
+                )
+                
+                InfoToggle(
+                    title: "启用本地用户发现 (LPD)",
+                    info: "启用 Local Peer Discovery 以找到更多用户 (Peers)",
+                    isOn: $enableLpd
+                )
                 
                 Picker("加密模式", selection: $btEncryptionMode) {
                     Text("允许加密").tag(0)
@@ -1414,4 +1474,37 @@ struct PathRow: View {
 
 #Preview {
     PreferencesView()
+}
+// MARK: - Info Toggle Component
+
+struct InfoToggle: View {
+    let title: String
+    let info: String
+    @Binding var isOn: Bool
+    @State private var showPopover = false
+
+    var body: some View {
+        Toggle(isOn: $isOn) {
+            HStack(spacing: 5) {
+                Text(title)
+                
+                Button {
+                    showPopover.toggle()
+                } label: {
+                    Image(systemName: "exclamationmark.circle")
+                        .foregroundStyle(.secondary)
+                        .font(.system(size: 12))
+                }
+                .buttonStyle(.plain)
+                .popover(isPresented: $showPopover) {
+                    Text(info)
+                        .padding(8)
+                        .frame(width: 200)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            }
+        }
+    }
 }

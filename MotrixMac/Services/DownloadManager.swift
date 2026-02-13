@@ -699,8 +699,18 @@ final class DownloadManager {
         await connect()
     }
     
+    var singleListMode: Bool {
+        get { UserDefaults.standard.bool(forKey: "singleListMode") }
+        set { UserDefaults.standard.set(newValue, forKey: "singleListMode") }
+    }
+
     func taskCount(for category: TaskCategory) -> Int {
-        tasks.filter { task in
+        if singleListMode && category == .downloading {
+            // In Single List Mode, "Downloading" (renamed to "All Tasks") shows everything
+            return tasks.count
+        }
+        
+        return tasks.filter { task in
             if category == .downloading {
                 // 进行中：包括除“已完成”之外的所有状态，此外“正在做种”的任务也属于进行中
                 if task.isSeeding { return true }
@@ -1101,8 +1111,6 @@ final class DownloadManager {
             
             // 4. Final refresh
             await refreshTasks()
-        } catch {
-            print("Failed to stop seeding: \(error)")
         }
     }
 
@@ -1463,52 +1471,70 @@ final class DownloadManager {
     }
 
     private func updateFilteredTasks() {
-        let categoryTasks = tasks.filter { task in
-            // Logic to handle "Seeding" tasks (Active but download finished)
-            // Seeding tasks should appear in 'Downloading' per user request
-            let isSeeding = task.isSeeding
-            
-            // Logic to prevent "Flashing" of completed HTTP tasks on startup
-            // If a standard task is fully downloaded but briefly "active" (verifying), treat as complete
-            let isHTTPComplete = !task.isTorrent && task.totalLength > 0 && task.completedLength == task.totalLength
-            
-            if currentCategory == .downloading {
-                // Downloading: Include seeding tasks.
-                if task.isSeeding { return true }
-                return task.status != "complete"
-            } else if currentCategory == .completed {
-                // Completed: Include complete tasks. Exclude seeding tasks.
-                if task.isSeeding { return false }
-                return task.status == "complete"
+        let categoryTasks: [DownloadTask]
+        
+        if singleListMode && currentCategory == .downloading {
+            // Single List Mode: Show ALL tasks
+            categoryTasks = tasks
+        } else {
+            // Standard Mode: Filter by category
+            categoryTasks = tasks.filter { task in
+                if currentCategory == .downloading {
+                    // Downloading: Include seeding tasks.
+                    if task.isSeeding { return true }
+                    return task.status != "complete"
+                } else if currentCategory == .completed {
+                    // Completed: Include complete tasks. Exclude seeding tasks.
+                    if task.isSeeding { return false }
+                    return task.status == "complete"
+                }
+                return false
             }
-            
-            return false
         }
 
         let sorted: [DownloadTask]
-        switch sortOrder {
-        case .dateAdded:
-            sorted = categoryTasks.sorted { $0.addedAt > $1.addedAt }
-        case .name:
-            sorted = categoryTasks.sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
-        case .size:
-            sorted = categoryTasks.sorted { $0.totalLength > $1.totalLength }
-        case .progress:
-            // Custom Logic:
-            // 1. Files NOT missing come first (isFileMissing == false < isFileMissing == true)
-            // 2. Completed tasks (Progress=1.0) sort by Date Added (Descending)
-            // 3. Active tasks sorting (Descending progress)
+        
+        if singleListMode && currentCategory == .downloading {
+            // Single List Mode Sorting: Active > Seeding > Completed
             sorted = categoryTasks.sorted { t1, t2 in
-                if t1.isFileMissing != t2.isFileMissing {
-                    return !t1.isFileMissing // Present files first
+                // 1. Downloading (Active) comes first
+                let t1Active = t1.status == "active" && !t1.isSeeding
+                let t2Active = t2.status == "active" && !t2.isSeeding
+                
+                if t1Active != t2Active {
+                    return t1Active // Active first
                 }
                 
-                // If both are completed
-                if t1.status == "complete" && t2.status == "complete" {
-                     return t1.addedAt > t2.addedAt
+                // 2. Seeding comes second
+                let t1Seeding = t1.isSeeding
+                let t2Seeding = t2.isSeeding
+                
+                if t1Seeding != t2Seeding {
+                    return t1Seeding // Seeding second
                 }
                 
-                return t1.progress > t2.progress
+                // 3. Within same group, sort by Date Added (Newest first)
+                return t1.addedAt > t2.addedAt
+            }
+        } else {
+            // Standard Sorting
+            switch sortOrder {
+            case .dateAdded:
+                sorted = categoryTasks.sorted { $0.addedAt > $1.addedAt }
+            case .name:
+                sorted = categoryTasks.sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
+            case .size:
+                sorted = categoryTasks.sorted { $0.totalLength > $1.totalLength }
+            case .progress:
+                sorted = categoryTasks.sorted { t1, t2 in
+                    if t1.isFileMissing != t2.isFileMissing {
+                        return !t1.isFileMissing // Present files first
+                    }
+                    if t1.status == "complete" && t2.status == "complete" {
+                         return t1.addedAt > t2.addedAt
+                    }
+                    return t1.progress > t2.progress
+                }
             }
         }
 
