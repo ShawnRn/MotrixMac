@@ -9,11 +9,8 @@ struct TaskListView: View {
     @Binding var selectedTaskIds: Set<String>
     @Binding var isInspectorPresented: Bool
 
-    @State private var showThoroughDeleteAlert = false
-    @State private var deleteFiles = false
-    @State private var rememberChoice = false
+    @State private var deleteSheetConfig: DeleteSheetConfig? = nil // nil = sheet hidden
     @State private var lastSelectedId: String? // Track last selection for Shift-click logic
-    @State private var isDeleteAllMode = false // New state for delete all
     
     // Marquee Selection State
     @State private var dragStart: CGPoint?
@@ -49,9 +46,11 @@ struct TaskListView: View {
                 searchText: $manager.searchText,
                 sortOrder: $manager.sortOrder,
                 onDeleteAll: {
-                    isDeleteAllMode = true
-                    deleteFiles = downloadManager.deleteWithFilesDefault
-                    showThoroughDeleteAlert = true
+                    deleteSheetConfig = DeleteSheetConfig(
+                        displayName: "删除所有任务",
+                        isDeleteAll: true,
+                        deleteFiles: downloadManager.deleteWithFilesDefault
+                    )
                 }
             )
             .padding(.horizontal, 20)
@@ -77,8 +76,8 @@ struct TaskListView: View {
         .background {
             keyboardShortcutViews
         }
-        .sheet(isPresented: $showThoroughDeleteAlert) {
-            thoroughDeleteSheet
+        .sheet(item: $deleteSheetConfig) { config in
+            thoroughDeleteSheet(config: config)
         }
         .onAppear {
             downloadManager.currentCategory = category
@@ -365,8 +364,12 @@ struct TaskListView: View {
         if downloadManager.skipDeleteConfirmation {
              deleteSelectedTasks(withFiles: downloadManager.deleteWithFilesDefault)
         } else {
-             deleteFiles = downloadManager.deleteWithFilesDefault
-             showThoroughDeleteAlert = true
+             let name = selectedDisplayName
+             deleteSheetConfig = DeleteSheetConfig(
+                 displayName: name,
+                 isDeleteAll: false,
+                 deleteFiles: downloadManager.deleteWithFilesDefault
+             )
         }
     }
 
@@ -385,8 +388,12 @@ struct TaskListView: View {
                 if downloadManager.skipDeleteConfirmation {
                      deleteSelectedTasks(withFiles: downloadManager.deleteWithFilesDefault)
                 } else {
-                     deleteFiles = downloadManager.deleteWithFilesDefault
-                     showThoroughDeleteAlert = true
+                     let name = selectedDisplayName
+                     deleteSheetConfig = DeleteSheetConfig(
+                         displayName: name,
+                         isDeleteAll: false,
+                         deleteFiles: downloadManager.deleteWithFilesDefault
+                     )
                 }
             }
         }
@@ -395,7 +402,12 @@ struct TaskListView: View {
 
         Button("") {
              if !selectedTaskIds.isEmpty {
-                 showThoroughDeleteAlert = true
+                 let name = selectedDisplayName
+                 deleteSheetConfig = DeleteSheetConfig(
+                     displayName: name,
+                     isDeleteAll: false,
+                     deleteFiles: downloadManager.deleteWithFilesDefault
+                 )
              }
         }
         .keyboardShortcut(.delete, modifiers: [.command, .option])
@@ -423,34 +435,34 @@ struct TaskListView: View {
     }
 
     @ViewBuilder
-    private var thoroughDeleteSheet: some View {
-        DeleteConfirmationSheet(
-            taskName: thoroughDeleteDisplayName,
-            deleteFiles: $deleteFiles,
-            rememberChoice: $rememberChoice,
-            onConfirm: {
-                if rememberChoice {
-                    downloadManager.skipDeleteConfirmation = true
-                    downloadManager.deleteWithFilesDefault = deleteFiles
+    private func thoroughDeleteSheet(config: DeleteSheetConfig) -> some View {
+        DeleteConfirmationSheetWrapper(
+            config: config,
+            downloadManager: downloadManager,
+            onDeleteAll: { withFiles in
+                let tasksToDelete = downloadManager.filteredTasks
+                Task {
+                    await downloadManager.deleteTasks(tasksToDelete, withFiles: withFiles)
+                    selectedTaskIds.removeAll()
                 }
-                
-                if isDeleteAllMode {
-                    let tasksToDelete = downloadManager.filteredTasks
-                    Task {
-                        await downloadManager.deleteTasks(tasksToDelete, withFiles: deleteFiles)
-                        selectedTaskIds.removeAll()
-                        isDeleteAllMode = false
-                    }
-                } else {
-                    deleteSelectedTasks(withFiles: deleteFiles)
-                }
-                showThoroughDeleteAlert = false
+                deleteSheetConfig = nil
+            },
+            onDeleteSelected: { withFiles in
+                deleteSelectedTasks(withFiles: withFiles)
+                deleteSheetConfig = nil
             },
             onCancel: {
-                isDeleteAllMode = false
-                showThoroughDeleteAlert = false
+                deleteSheetConfig = nil
             }
-            )
+        )
+    }
+
+    private var selectedDisplayName: String {
+        if selectedTaskIds.count == 1 {
+            return downloadManager.filteredTasks.first(where: { $0.id == selectedTaskIds.first })?.name ?? "1 个任务"
+        } else {
+            return "\(selectedTaskIds.count) 个任务"
+        }
     }
 
     private func handleTap(task: DownloadTask) {
@@ -475,16 +487,6 @@ struct TaskListView: View {
             // Single selection
             selectedTaskIds = [task.id]
             lastSelectedId = task.id
-        }
-    }
-
-    private var thoroughDeleteDisplayName: String {
-        if isDeleteAllMode {
-            return "当前列表中的所有任务"
-        } else if selectedTaskIds.count == 1 {
-            return downloadManager.filteredTasks.first(where: { $0.id == selectedTaskIds.first })?.name ?? "1 个任务"
-        } else {
-            return "\(selectedTaskIds.count) 个任务"
         }
     }
 
@@ -838,7 +840,7 @@ struct TaskListHeader: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     if category == .downloading && downloadManager.singleListMode {
-                        Text("所有任务")
+                        Text("所有下载任务")
                             .font(.title2)
                             .fontWeight(.semibold)
                     } else {
@@ -1067,5 +1069,54 @@ struct EngineHealOverlay: View {
             .padding(40)
         }
         .ignoresSafeArea()
+    }
+}
+
+// MARK: - Delete Sheet Config
+
+struct DeleteSheetConfig: Identifiable {
+    let id = UUID()
+    let displayName: String
+    let isDeleteAll: Bool
+    let deleteFiles: Bool
+}
+
+struct DeleteConfirmationSheetWrapper: View {
+    let config: DeleteSheetConfig
+    let downloadManager: DownloadManager
+    let onDeleteAll: (Bool) -> Void
+    let onDeleteSelected: (Bool) -> Void
+    let onCancel: () -> Void
+    
+    @State private var deleteFiles: Bool
+    @State private var rememberChoice = false
+    
+    init(config: DeleteSheetConfig, downloadManager: DownloadManager, onDeleteAll: @escaping (Bool) -> Void, onDeleteSelected: @escaping (Bool) -> Void, onCancel: @escaping () -> Void) {
+        self.config = config
+        self.downloadManager = downloadManager
+        self.onDeleteAll = onDeleteAll
+        self.onDeleteSelected = onDeleteSelected
+        self.onCancel = onCancel
+        self._deleteFiles = State(initialValue: config.deleteFiles)
+    }
+    
+    var body: some View {
+        DeleteConfirmationSheet(
+            taskName: config.displayName,
+            deleteFiles: $deleteFiles,
+            rememberChoice: $rememberChoice,
+            onConfirm: {
+                if rememberChoice {
+                    downloadManager.skipDeleteConfirmation = true
+                    downloadManager.deleteWithFilesDefault = deleteFiles
+                }
+                if config.isDeleteAll {
+                    onDeleteAll(deleteFiles)
+                } else {
+                    onDeleteSelected(deleteFiles)
+                }
+            },
+            onCancel: onCancel
+        )
     }
 }

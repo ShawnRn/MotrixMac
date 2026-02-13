@@ -37,6 +37,15 @@ struct AboutView: View {
     ]
     @State private var changelogs: [ChangelogItem] = [
         ChangelogItem(
+            version: "1.1.7",
+            date: "2026-02-13",
+            changes: [
+                "修复了下载完成不弹出通知的 bug。",
+                "小幅优化界面细节。",
+                "重构了删除确认弹窗的数据传递机制，提升稳定性。"
+            ]
+        ),
+        ChangelogItem(
             version: "1.1.6",
             date: "2026-02-13",
             changes: [

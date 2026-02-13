@@ -34,7 +34,7 @@ struct SidebarView: View {
                                 isHovered: hoveredCategory == category,
                                 count: downloadManager.taskCount(for: category),
                                 namespace: sidebarNamespace,
-                                customTitle: category == .downloading ? "所有任务" : nil // Rename "Downloading"
+                                customTitle: category == .downloading ? "主页" : nil // Rename "Downloading" to "Home"
                             ) {
                                 onSelect(category)
                             }

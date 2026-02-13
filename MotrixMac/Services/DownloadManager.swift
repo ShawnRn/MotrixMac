@@ -17,6 +17,7 @@ final class DownloadManager {
     var needsRepair = false // Signals persistent engine issues
     private var deletingGIDs: Set<String> = [] // Track tasks being deleted
     private var notifiedStartedGIDs: Set<String> = [] // Track tasks that have triggered speed notification
+    private var notifiedCompletedGIDs: Set<String> = [] // Track tasks that have triggered completion notification
     private var persistentTasks: [String: DownloadTask] = [:] // Local storage for completed tasks
 
     // UI state
@@ -113,9 +114,12 @@ final class DownloadManager {
             let data = try Data(contentsOf: path)
             let tasks = try JSONDecoder().decode([String: DownloadTask].self, from: data)
             self.persistentTasks = tasks
-            // Restore dates from persistence
+            // Restore dates and notification state from persistence
             for (id, task) in tasks {
                 self.taskDates[id] = task.addedAt
+                if task.status == "complete" {
+                    self.notifiedCompletedGIDs.insert(id)
+                }
             }
             print("DownloadManager: Loaded \(tasks.count) persistent tasks")
         } catch {
@@ -1131,6 +1135,7 @@ final class DownloadManager {
         for id in idsToRemove {
             self.persistentTasks.removeValue(forKey: id)
             self.notifiedStartedGIDs.remove(id)
+            self.notifiedCompletedGIDs.remove(id)
         }
         self.savePersistentTasks()
         
@@ -1287,42 +1292,13 @@ final class DownloadManager {
     }
 
     private func handleNotification(method: String, params: [Any]) {
-        // Refresh tasks on any relevant event
-        Task {
-            await refreshTasks()
-
-            // Handle specific events for notifications
-            if method == "aria2.onDownloadStart" {
-                 if let firstParam = params.first as? [String: Any],
-                    let gid = firstParam["gid"] as? String
-                 {
-                    // [Feature] Immediate notification on task start
-                    // We check if it's a metadata task to avoid noise
-                    Task {
-                        if let task = try? await aria2Service?.tellStatus(gid: gid) {
-                            // [Critical Fix] Filter out all announce/tracker phantom tasks
-                            let name = task.name.lowercased()
-                            if task.name.hasPrefix("[METADATA]") ||
-                               name.contains("announce") ||
-                               name.hasSuffix(".php") ||
-                               task.uri.contains("/announce") { return }
-                            
-                            // [Critical Fix] Don't notify for tasks already known as complete
-                            // This prevents "ghost" notifications when aria2 briefly re-reports completed tasks on startup
-                            if let persistent = self.persistentTasks[gid], persistent.status == "complete" { return }
-                            
-                            // Prevent duplicate start notifications if speed check already fired
-                            if !self.notifiedStartedGIDs.contains(gid) {
-                                self.notifiedStartedGIDs.insert(gid)
-                                sendNotification(title: "开始下载", body: "\(task.name) 已开始下载")
-                            }
-                        }
-                    }
-                }
-            } else if method == "aria2.onDownloadComplete" {
-                if let firstParam = params.first as? [String: Any],
-                    let gid = firstParam["gid"] as? String
-                {
+        // [Critical Fix] Handle specific events for notifications BEFORE refreshTasks
+        // to avoid race conditions where refreshTasks updates status and suppresses notification
+        if method == "aria2.onDownloadStart" {
+             if let firstParam = params.first as? [String: Any],
+                let gid = firstParam["gid"] as? String
+             {
+                Task {
                     if let task = try? await aria2Service?.tellStatus(gid: gid) {
                         // [Critical Fix] Filter out all announce/tracker phantom tasks
                         let name = task.name.lowercased()
@@ -1331,17 +1307,41 @@ final class DownloadManager {
                            name.hasSuffix(".php") ||
                            task.uri.contains("/announce") { return }
                         
-                        // [Fix] Suppress notification if task is already known as complete in persistent storage
-                        if let persistent = persistentTasks[gid], persistent.status == "complete" {
+                        // [Critical Fix] Don't notify for tasks already known as complete
+                        if let persistent = self.persistentTasks[gid], persistent.status == "complete" { return }
+                        
+                        // Prevent duplicate start notifications
+                        if !self.notifiedStartedGIDs.contains(gid) {
+                            self.notifiedStartedGIDs.insert(gid)
+                            sendNotification(title: "开始下载", body: "\(task.name) 已开始下载")
+                        }
+                    }
+                }
+            }
+        } else if method == "aria2.onDownloadComplete" || method == "aria2.onBtDownloadComplete" {
+            if let firstParam = params.first as? [String: Any],
+                let gid = firstParam["gid"] as? String
+            {
+                Task {
+                    if let task = try? await aria2Service?.tellStatus(gid: gid) {
+                        // [Critical Fix] Filter out all announce/tracker phantom tasks
+                        let name = task.name.lowercased()
+                        if task.name.hasPrefix("[METADATA]") ||
+                           name.contains("announce") ||
+                           name.hasSuffix(".php") ||
+                           task.uri.contains("/announce") { return }
+                        
+                        // [Fix] Suppress notification if already notified
+                        if self.notifiedCompletedGIDs.contains(gid) {
                             return
                         }
                         
-                        sendNotification(title: "下载完成", body: "\(task.name) 已下载完成")
+                        let title = method == "aria2.onBtDownloadComplete" ? "BT 下载完成" : "下载完成"
+                        sendNotification(title: title, body: "\(task.name) 已下载完成")
+                        self.notifiedCompletedGIDs.insert(gid)
                         
-                        // [Critical Fix] Force save session immediately upon completion
+                        // [Critical Fix] Update persistent state and save session immediately
                         try? await self.aria2Service?.saveSession()
-                        
-                        // Update persistent state immediately
                         if let existing = self.persistentTasks[gid] {
                             var updated = existing
                             updated.status = "complete"
@@ -1350,44 +1350,12 @@ final class DownloadManager {
                         }
                     }
                 }
-            } else if method == "aria2.onBtDownloadComplete" {
-                if let firstParam = params.first as? [String: Any],
-                   let gid = firstParam["gid"] as? String
-                {
-                   Task {
-                       if let task = try? await aria2Service?.tellStatus(gid: gid) {
-                           // [Critical Fix] Filter out all announce/tracker phantom tasks
-                           let name = task.name.lowercased()
-                           if task.name.hasPrefix("[METADATA]") ||
-                              name.contains("announce") ||
-                              name.hasSuffix(".php") ||
-                              task.uri.contains("/announce") { return }
-                           
-                           // Deduplicate against persistent status
-                           if let persistent = persistentTasks[gid], persistent.status == "complete" { return }
-                           
-                           // Also unlikely to need deduplication against onDownloadComplete if we check persistent status first?
-                           // But to be safe, we can check if we just notified.
-                           // For simplicity, we rely on the persistent status check, assuming onDownloadComplete (if fired) set it.
-                           // If onDownloadComplete didn't fire (BT specific case), then we notify here.
-                           
-                           sendNotification(title: "BT 下载完成", body: "\(task.name) 已下载完成")
-                           
-                           try? await self.aria2Service?.saveSession()
-                           
-                           if let existing = self.persistentTasks[gid] {
-                               var updated = existing
-                               updated.status = "complete"
-                               self.persistentTasks[gid] = updated
-                               self.savePersistentTasks()
-                           }
-                       }
-                   }
-                }
-            } else if method == "aria2.onDownloadError" {
-                if let firstParam = params.first as? [String: Any],
-                    let gid = firstParam["gid"] as? String
-                {
+            }
+        } else if method == "aria2.onDownloadError" {
+            if let firstParam = params.first as? [String: Any],
+                let gid = firstParam["gid"] as? String
+            {
+                Task {
                     if let task = try? await aria2Service?.tellStatus(gid: gid) {
                         // Suppress notifications for phantom "announce" tasks
                         if task.name == "announce" || (task.totalLength == 0 && task.name.hasPrefix("announce")) {
@@ -1400,6 +1368,11 @@ final class DownloadManager {
                     }
                 }
             }
+        }
+
+        // Refresh tasks on any relevant event to update UI
+        Task {
+            await refreshTasks()
         }
     }
 

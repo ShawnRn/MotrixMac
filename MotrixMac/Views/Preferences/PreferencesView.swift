@@ -168,7 +168,7 @@ struct GeneralPreferencesTab: View {
 
                 InfoToggle(
                     title: "单列表模式",
-                    info: "融合下载中和已完成列表，将所有任务显示在同一个视图中。",
+                    info: "融合下载中和已完成列表，将所有任务显示在同一个主页视图中。",
                     isOn: $singleListMode
                 )
             }
