@@ -30,18 +30,16 @@ chrome-extension-unpacked/
 packages/
 *.zip
 
-# MotrixMac specific
-bin/
-*.log
-tasks.json
-aria2.session
-aria2.conf.local
-aria2.session.local
-aria2.log
+# Build artifacts
+.build/
+MotrixMac.app/
 
-# Local Release & Scripts
+# Local Release & Logs
 releases/
-scripts/
+logs/
+*.log
+build.log
+build_*.log
 
 AppIcon/
 

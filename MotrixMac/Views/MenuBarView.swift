@@ -6,6 +6,7 @@ struct MenuBarView: View {
     @Environment(DownloadManager.self) private var downloadManager
 
     @Environment(\.openWindow) private var openWindow
+    @AppStorage("language") private var language = "zh-CN"
 
     var body: some View {
         VStack(spacing: 0) {
@@ -56,7 +57,7 @@ struct MenuBarView: View {
                         .font(.largeTitle)
                         .foregroundStyle(.quaternary)
 
-                    Text("暂无下载任务")
+                    Text("暂无下载任务".localized(for: language))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -70,7 +71,7 @@ struct MenuBarView: View {
                         }
 
                         if downloadManager.activeDownloads.count > 5 {
-                            Text("+ 还有 \(downloadManager.activeDownloads.count - 5) 个任务")
+                            Text(String(format: "+ 还有 %d 个任务".localized(for: language), downloadManager.activeDownloads.count - 5))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -87,14 +88,14 @@ struct MenuBarView: View {
                 Button {
                     Task { await downloadManager.pauseAll() }
                 } label: {
-                    Label("全部暂停", systemImage: "pause.fill")
+                    Label("全部暂停".localized(for: language), systemImage: "pause.fill")
                 }
                 .disabled(downloadManager.activeDownloads.isEmpty)
 
                 Button {
                     Task { await downloadManager.resumeAll() }
                 } label: {
-                    Label("全部恢复", systemImage: "play.fill")
+                    Label("全部恢复".localized(for: language), systemImage: "play.fill")
                 }
 
                 Spacer()
@@ -102,7 +103,7 @@ struct MenuBarView: View {
                 Button {
                     showMainWindow()
                 } label: {
-                    Label("打开主面板", systemImage: "arrow.up.forward.app")
+                    Label("打开主面板".localized(for: language), systemImage: "arrow.up.forward.app")
                 }
             }
             .font(.caption)
@@ -115,7 +116,7 @@ struct MenuBarView: View {
             Button {
                 NSApp.terminate(nil)
             } label: {
-                Text("退出 MotrixMac (⌘+Q)")
+                Text("退出 MotrixMac (⌘+Q)".localized(for: language))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)

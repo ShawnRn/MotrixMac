@@ -3,6 +3,7 @@ import Sparkle
 
 
 struct AboutView: View {
+    @AppStorage("language") private var language = "zh-CN"
     @State private var licenses: [LicenseItem] = [
         LicenseItem(
             name: "Motrix",
@@ -36,6 +37,15 @@ struct AboutView: View {
         )
     ]
     @State private var changelogs: [ChangelogItem] = [
+        ChangelogItem(
+            version: "1.1.8",
+            date: "2026-02-16",
+            changes: [
+                "新增定期自动清除任务功能。",
+                "优化了多语言支持，现在支持中英日韩。",
+                "修复了一些界面 bugs。"
+            ]
+        ),
         ChangelogItem(
             version: "1.1.7",
             date: "2026-02-13",
@@ -220,7 +230,10 @@ struct AboutView: View {
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             
-                        Text("一个轻量化的、全原生 Swift 实现的下载工具。")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            
+                        Text("一个轻量化的、全原生 Swift 实现的下载工具。".localized(for: language))
                             .font(.body)
                             .foregroundStyle(.secondary)
                             .padding(.top, 4)
@@ -229,7 +242,7 @@ struct AboutView: View {
                 
                 // Navigation Links
                 HStack(spacing: 24) {
-                    AboutButton(icon: "doc.text.fill", title: "开源许可") {
+                    AboutButton(icon: "doc.text.fill", title: "开源许可".localized(for: language)) {
                         showLicenses = true
                     }
                     .sheet(isPresented: $showLicenses) {
@@ -239,7 +252,7 @@ struct AboutView: View {
                     
                     AboutButton(icon: "globe", title: "GitHub", isLink: true, url: "https://github.com/ShawnRn/MotrixMac")
 
-                    AboutButton(icon: "clock.arrow.circlepath", title: "更新日志") {
+                    AboutButton(icon: "clock.arrow.circlepath", title: "更新日志".localized(for: language)) {
                         showChangelog = true
                     }
                     .sheet(isPresented: $showChangelog) {
@@ -256,7 +269,7 @@ struct AboutView: View {
             Button {
                 AppDelegate.shared?.updaterController.checkForUpdates(nil)
             } label: {
-                Label("检查更新", systemImage: "arrow.up.circle.fill")
+                Label("检查更新".localized(for: language), systemImage: "arrow.up.circle.fill")
                     .font(.system(size: 14, weight: .medium))
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)

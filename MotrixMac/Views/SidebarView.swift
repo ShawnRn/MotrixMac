@@ -11,6 +11,7 @@ struct SidebarView: View {
     @Namespace private var sidebarNamespace
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage("singleListMode") private var singleListMode = false
+    @AppStorage("language") private var language = "zh-CN"
 
     var body: some View {
         VStack(spacing: 0) {
@@ -26,7 +27,6 @@ struct SidebarView: View {
                     if singleListMode {
                         if category == .completed {
                             // Skip "Completed" tab in single list mode
-                            EmptyView()
                         } else {
                             SidebarItem(
                                 category: category,
@@ -34,7 +34,7 @@ struct SidebarView: View {
                                 isHovered: hoveredCategory == category,
                                 count: downloadManager.taskCount(for: category),
                                 namespace: sidebarNamespace,
-                                customTitle: category == .downloading ? "主页" : nil // Rename "Downloading" to "Home"
+                                customTitle: category == .downloading ? "主页".localized(for: language) : category.title.localized(for: language)
                             ) {
                                 onSelect(category)
                             }
@@ -51,7 +51,8 @@ struct SidebarView: View {
                             isSelected: selectedCategory == category,
                             isHovered: hoveredCategory == category,
                             count: downloadManager.taskCount(for: category),
-                            namespace: sidebarNamespace
+                            namespace: sidebarNamespace,
+                            customTitle: category.title.localized(for: language)
                         ) {
                             onSelect(category)
                         }
@@ -75,7 +76,9 @@ struct SidebarView: View {
                     isSelected: selectedCategory == .settings,
                     isHovered: hoveredCategory == .settings,
                     count: 0,
-                    namespace: sidebarNamespace
+
+                    namespace: sidebarNamespace,
+                    customTitle: TaskCategory.settings.title.localized(for: language)
                 ) {
                     onSelect(.settings)
                 }
@@ -91,7 +94,9 @@ struct SidebarView: View {
                     isSelected: selectedCategory == .about,
                     isHovered: hoveredCategory == .about,
                     count: 0,
-                    namespace: sidebarNamespace
+
+                    namespace: sidebarNamespace,
+                    customTitle: TaskCategory.about.title.localized(for: language)
                 ) {
                     onSelect(.about)
                 }
@@ -156,6 +161,7 @@ struct SidebarItem: View {
                 Text(customTitle ?? category.title)
                     .font(.system(size: 14, weight: .regular))
                     .foregroundStyle(isSelected ? .white : .primary)
+                    .allowsHitTesting(false) // Fix cursor issue in sidebar
 
                 Spacer()
 

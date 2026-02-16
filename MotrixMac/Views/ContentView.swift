@@ -15,6 +15,7 @@ struct MainContentView: View {
     @AppStorage("showInDock") private var showInDock = true
     @State private var isInspectorPresented: Bool = false
     @AppStorage("theme") private var appTheme = "auto"
+    @AppStorage("language") private var language = "zh-CN"
     
     // For navigation guard
     @State private var showingSettingsGuard = false
@@ -120,24 +121,24 @@ struct MainContentView: View {
                 settingsTab = .general
             }
         }
-        .alert("设置未保存", isPresented: $showingSettingsGuard) {
-            Button("应用并离开") {
+        .alert("设置未保存".localized(for: language), isPresented: $showingSettingsGuard) {
+            Button("应用并离开".localized(for: language)) {
                 NotificationCenter.default.post(name: .saveSettings, object: nil)
                 if let category = pendingCategory {
                     switchCategory(category)
                 }
             }
-            Button("放弃修改", role: .destructive) {
+            Button("放弃修改".localized(for: language), role: .destructive) {
                 NotificationCenter.default.post(name: .discardSettings, object: nil)
                 if let category = pendingCategory {
                     switchCategory(category)
                 }
             }
-            Button("取消", role: .cancel) {
+            Button("取消".localized(for: language), role: .cancel) {
                 pendingCategory = nil
             }
         } message: {
-            Text("您在设置页面有未保存的更改。离开前是否应用这些更改？")
+            Text("您在设置页面有未保存的更改。离开前是否应用这些更改？".localized(for: language))
         }
         .sheet(isPresented: $manager.showAddTaskSheet) {
             AddTaskSheet().environment(downloadManager)
@@ -324,6 +325,7 @@ struct MainContentView: View {
 struct ToolbarContent: View {
     @Environment(DownloadManager.self) private var downloadManager
     @AppStorage("settingsAreDirty") private var settingsAreDirty = false
+    @AppStorage("language") private var language = "zh-CN"
 
     var body: some View {
         HStack(spacing: 12) {
@@ -332,14 +334,14 @@ struct ToolbarContent: View {
                 Button {
                     downloadManager.showAddTaskSheet = true
                 } label: {
-                    Label("Add Download", systemImage: "plus")
+                    Label("添加下载".localized(for: language), systemImage: "plus")
                 }
                 .help("Add new download (⌘N)")
 
                 Button {
                     Task { await downloadManager.refreshTasks() }
                 } label: {
-                    Label("Refresh", systemImage: "arrow.clockwise")
+                    Label("刷新".localized(for: language), systemImage: "arrow.clockwise")
                 }
                 .help("Refresh task list")
                 
@@ -347,7 +349,7 @@ struct ToolbarContent: View {
                     Button {
                         NotificationCenter.default.post(name: .saveSettings, object: nil)
                     } label: {
-                        Label("Apply", systemImage: "checkmark")
+                        Label("应用".localized(for: language), systemImage: "checkmark")
                     }
                     .help("应用设置")
                     .transition(.asymmetric(
@@ -384,17 +386,19 @@ struct ToolbarContent: View {
 // MARK: - Empty State
 
 struct EmptyStateView: View {
+    @AppStorage("language") private var language = "zh-CN"
+    
     var body: some View {
         VStack(spacing: 16) {
             Image(systemName: "arrow.down.doc")
                 .font(.system(size: 64))
                 .foregroundStyle(.tertiary)
 
-            Text("未选择任务")
+            Text("未选择任务".localized(for: language))
                 .font(.title2)
                 .foregroundStyle(.secondary)
 
-            Text("从列表中选择一个下载任务以查看详情")
+            Text("从列表中选择一个下载任务以查看详情".localized(for: language))
                 .font(.subheadline)
                 .foregroundStyle(.tertiary)
         }
@@ -420,4 +424,3 @@ struct LiquidBlurModifier: ViewModifier {
             .opacity(opacity)
     }
 }
-

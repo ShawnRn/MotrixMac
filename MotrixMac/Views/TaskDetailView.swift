@@ -7,6 +7,7 @@ struct TaskDetailView: View {
     @Environment(DownloadManager.self) private var downloadManager
     let task: DownloadTask
     let initialThumbnail: NSImage?
+    @AppStorage("language") private var language = "zh-CN"
 
     @State private var selectedTab: DetailTab = .general
 
@@ -22,9 +23,11 @@ struct TaskDetailView: View {
 
             if task.isTorrent {
                 // Custom sliding tab picker
-                SlidingTabPicker(selection: $selectedTab, tabs: DetailTab.allCases)
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 16)
+                SlidingTabPicker(selection: $selectedTab, tabs: DetailTab.allCases) { tab in
+                    tab.title.localized(for: language)
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 16)
             }
 
             // Tab content with animation
@@ -56,6 +59,7 @@ struct TaskDetailHeader: View {
     @Environment(DownloadManager.self) private var downloadManager
     let task: DownloadTask
     let initialThumbnail: NSImage?
+    @AppStorage("language") private var language = "zh-CN"
 
     var body: some View {
         HStack(alignment: .top, spacing: 20) {
@@ -104,7 +108,7 @@ struct TaskDetailHeader: View {
                             )
                         } else {
                             // Placeholder or Completed Date
-                            InfoLabel(icon: "folder", text: task.isTorrent ? "文件夹" : "文件")
+                            InfoLabel(icon: "folder", text: (task.isTorrent ? "文件夹" : "文件").localized(for: language))
                         }
                     }
                     
@@ -253,14 +257,15 @@ extension SlidingTabPicker where Tab == DetailTab {
 
 struct GeneralTabView: View {
     let task: DownloadTask
+    @AppStorage("language") private var language = "zh-CN"
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 if !task.downloadSpeedHistory.isEmpty, (task.downloadSpeedHistory.max() ?? 0) > 0 {
-                    DetailSection(title: "速度走势") {
+                    DetailSection(title: "速度走势".localized(for: language)) {
                         if let maxSpeed = task.downloadSpeedHistory.max(), maxSpeed > 0 {
-                            Label("峰值: \(maxSpeed.formatted(.byteCount(style: .file)))/s", systemImage: "bolt.fill")
+                            Label("峰值: ".localized(for: language) + "\(maxSpeed.formatted(.byteCount(style: .file)))/s", systemImage: "bolt.fill")
                                 .font(.system(size: 9, weight: .bold, design: .monospaced))
                                 .foregroundStyle(Color.accentColor)
                                 .padding(.horizontal, 8)
@@ -281,46 +286,46 @@ struct GeneralTabView: View {
                     }
                 }
  else if let bitfield = task.bitfield, !bitfield.isEmpty {
-                    DetailSection(title: "分块进度") {
+                    DetailSection(title: "分块进度".localized(for: language)) {
                         PieceProgressView(bitfield: bitfield, numPieces: task.numPieces, connections: task.connections)
                     }
                 }
 
-                DetailSection(title: "下载") {
-                    DetailRow(label: "链接", value: task.uri)
-                    DetailRow(label: "保存位置", value: task.dir)
+                DetailSection(title: "下载".localized(for: language)) {
+                    DetailRow(label: "链接".localized(for: language), value: task.uri)
+                    DetailRow(label: "保存位置".localized(for: language), value: task.dir)
                     if task.isActive {
-                        DetailRow(label: "连接数", value: "\(task.connections)")
+                        DetailRow(label: "连接数".localized(for: language), value: "\(task.connections)")
                     }
                 }
 
-                DetailSection(title: "进度") {
+                DetailSection(title: "进度".localized(for: language)) {
                     DetailRow(
-                        label: "已下载",
+                        label: "已下载".localized(for: language),
                         value: task.completedLength.formatted(.byteCount(style: .file)))
                     DetailRow(
-                        label: "总大小",
+                        label: "总大小".localized(for: language),
                         value: task.totalLength.formatted(.byteCount(style: .file)))
                     DetailRow(
-                        label: "进度", value: String(format: "%.1f%%", task.progress * 100))
+                        label: "进度".localized(for: language), value: String(format: "%.1f%%", task.progress * 100))
                 }
 
                 if task.isActive {
-                    DetailSection(title: "速度") {
+                    DetailSection(title: "速度".localized(for: language)) {
                         DetailRow(
-                            label: "下载速度",
+                            label: "下载速度".localized(for: language),
                             value: task.downloadSpeed.formatted(.byteCount(style: .file)) + "/s")
                         DetailRow(
-                            label: "上传速度",
+                            label: "上传速度".localized(for: language),
                             value: task.uploadSpeed.formatted(.byteCount(style: .file)) + "/s")
                     }
                 }
 
                 if task.isTorrent {
                     DetailSection(title: "BitTorrent") {
-                        DetailRow(label: "Info Hash", value: task.infoHash ?? "N/A")
-                        DetailRow(label: "做种数", value: "\(task.numSeeders)")
-                        DetailRow(label: "分块数", value: "\(task.numPieces)")
+                        DetailRow(label: "Info Hash".localized(for: language), value: task.infoHash ?? "N/A")
+                        DetailRow(label: "做种数".localized(for: language), value: "\(task.numSeeders)")
+                        DetailRow(label: "分块数".localized(for: language), value: "\(task.numPieces)")
                     }
                 }
             }
@@ -584,7 +589,7 @@ struct SpeedChartView: View {
         let total = history.count
         let secondsAgo = total - 1 - index
         if secondsAgo <= 0 {
-            return isComplete ? "完成" : "现在"
+            return isComplete ? "完成".localized(for: "zh-CN") : "现在".localized(for: "zh-CN") // Placeholder
         }
         return "-\(secondsAgo)s"
     }
@@ -631,7 +636,7 @@ struct FileRow: View {
                     .foregroundStyle(.green)
             } else {
                 Image(systemName: "circle")
-                    .foregroundStyle(.quaternary)
+                .foregroundStyle(.quaternary)
             }
         }
         .padding(12)
@@ -644,20 +649,17 @@ struct FileRow: View {
 
 // MARK: - Peers Tab
 
-// MARK: - Peers Tab (极简版 + 气泡交互)
-
 struct PeersTabView: View {
     let task: DownloadTask
+    @AppStorage("language") private var language = "zh-CN"
 
-    // 使用 Grid 布局可以让极简的 IP 列表排布更高效（例如一行显示 2-3 个），
-    // 或者坚持用 List 单列显示。这里为了清晰，我们保持单列 List，但做得很紧凑。
     var body: some View {
         if task.peers.isEmpty {
             VStack(spacing: 8) {
                 Image(systemName: "person.2.slash")
                     .font(.system(size: 32, weight: .light))
                     .foregroundStyle(.tertiary)
-                Text("暂无用户")
+                Text("暂无用户".localized(for: language))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -665,8 +667,7 @@ struct PeersTabView: View {
             .offset(y: -30)
         } else {
             ScrollView {
-                LazyVStack(spacing: 0) { // Removed spacing for compact look
-                    // Stabilize the list by sorting by IP
+                LazyVStack(spacing: 0) {
                     let sortedPeers = task.peers.sorted { $0.ip < $1.ip }
                     
                     ForEach(sortedPeers) { peer in
@@ -713,19 +714,19 @@ struct PeerMinimalRow: View {
                 if peer.downloadSpeed > 0 {
                     HStack(spacing: 2) {
                         Image(systemName: "arrow.down")
-                            .font(.system(size: 8))
+                        .font(.system(size: 8))
                         Text(peer.downloadSpeed.formatted(.byteCount(style: .file)) + "/s")
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.green)
                     }
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundStyle(.green)
                 } else if peer.uploadSpeed > 0 {
                     HStack(spacing: 2) {
                         Image(systemName: "arrow.up")
-                            .font(.system(size: 8))
+                        .font(.system(size: 8))
                         Text(peer.uploadSpeed.formatted(.byteCount(style: .file)) + "/s")
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.blue)
                     }
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundStyle(.blue)
                 }
                 
                 // 4. 信息图标
@@ -757,6 +758,7 @@ struct PeerMinimalRow: View {
 struct PeerDetailPopover: View {
     let peer: TaskPeer
     let flag: String
+    @AppStorage("language") private var language = "zh-CN"
     
     var clientName: String {
         peer.clientName
@@ -793,7 +795,7 @@ struct PeerDetailPopover: View {
             Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
                 // 客户端
                 GridRow {
-                    Label("客户端", systemImage: "desktopcomputer")
+                    Label("客户端".localized(for: language), systemImage: "desktopcomputer")
                         .foregroundStyle(.secondary)
                     Text(clientName)
                         .lineLimit(1)
@@ -801,7 +803,7 @@ struct PeerDetailPopover: View {
                 
                 // 端口
                 GridRow {
-                    Label("端口", systemImage: "network")
+                    Label("端口".localized(for: language), systemImage: "network")
                         .foregroundStyle(.secondary)
                     Text(peer.port, format: .number.grouping(.never))
                         .monospacedDigit()
@@ -809,7 +811,7 @@ struct PeerDetailPopover: View {
                 
                 // 连接状态
                 GridRow {
-                    Label("状态", systemImage: "antenna.radiowaves.left.and.right")
+                    Label("状态".localized(for: language), systemImage: "antenna.radiowaves.left.and.right")
                         .foregroundStyle(.secondary)
                     HStack(spacing: 6) {
                         Circle()
@@ -827,7 +829,7 @@ struct PeerDetailPopover: View {
             // 底部：速度面板
             HStack(spacing: 20) {
                 SpeedIndicator(
-                    title: "下载",
+                    title: "下载".localized(for: language),
                     value: peer.downloadSpeed,
                     color: .green,
                     icon: "arrow.down"
@@ -836,7 +838,7 @@ struct PeerDetailPopover: View {
                 Divider().frame(height: 20)
                 
                 SpeedIndicator(
-                    title: "上传",
+                    title: "上传".localized(for: language),
                     value: peer.uploadSpeed,
                     color: .blue,
                     icon: "arrow.up"
@@ -892,6 +894,7 @@ struct SpeedIndicator: View {
 
 struct TrackersTabView: View {
     let task: DownloadTask
+    @AppStorage("language") private var language = "zh-CN"
 
     var body: some View {
         if task.trackers.isEmpty {
@@ -900,12 +903,12 @@ struct TrackersTabView: View {
                     .font(.system(size: 36, weight: .thin))
                     .foregroundStyle(.tertiary)
                 
-                Text("暂无 Tracker")
+                Text("暂无 Tracker".localized(for: language))
                     .font(.title3)
                     .fontWeight(.medium)
                     .foregroundStyle(.secondary)
                 
-                Text("未配置或未连接到任何 Tracker")
+                Text("未配置或未连接到任何 Tracker".localized(for: language))
                     .font(.subheadline)
                     .foregroundStyle(.tertiary)
             }
@@ -931,6 +934,7 @@ struct TrackersTabView: View {
 
 struct TrackerRow: View {
     let tracker: TaskTracker
+    @AppStorage("language") private var language = "zh-CN"
     
     private var statusColor: Color {
         switch tracker.status.lowercased() {
@@ -943,9 +947,9 @@ struct TrackerRow: View {
     
     private var localizedStatus: String {
         switch tracker.status.lowercased() {
-        case "active": return "活跃"
-        case "waiting": return "等待中"
-        case "error", "failed": return "失败"
+        case "active": return "active".localized(for: language)
+        case "waiting": return "waiting".localized(for: language)
+        case "error", "failed": return "error".localized(for: language)
         default: return tracker.status.capitalized
         }
     }
@@ -973,12 +977,6 @@ struct TrackerRow: View {
                 .fill(.quaternary.opacity(0.3))
         }
     }
-}
-
-#Preview {
-    TaskDetailView(task: .preview, initialThumbnail: nil)
-        .environment(DownloadManager.shared)
-        .frame(width: 500, height: 700)
 }
 
 // MARK: - Piece Progress View (Helper)

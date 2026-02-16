@@ -1,0 +1,1 @@
+(()=>{"use strict";navigator.userAgent.includes("Firefox")})();

@@ -22,6 +22,7 @@ struct DownloadTask: Identifiable, Equatable, Codable, Sendable {
     var peers: [TaskPeer]
     var trackers: [TaskTracker]
     var addedAt: Date
+    var completedAt: Date? // [NEW] Track completion time for auto-delete
     var errorMessage: String?
     var bitfield: String?
     var downloadSpeedHistory: [Int64] = []
@@ -40,7 +41,7 @@ struct DownloadTask: Identifiable, Equatable, Codable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id, name, uri, dir, status, totalLength, completedLength
         case downloadSpeed, uploadSpeed, connections, numSeeders, numPieces
-        case infoHash, files, peers, trackers, addedAt, errorMessage, bitfield
+        case infoHash, files, peers, trackers, addedAt, completedAt, errorMessage, bitfield
         case downloadSpeedHistory
     }
 
@@ -63,6 +64,7 @@ struct DownloadTask: Identifiable, Equatable, Codable, Sendable {
         peers = (try? container.decode([TaskPeer].self, forKey: .peers)) ?? []
         trackers = (try? container.decode([TaskTracker].self, forKey: .trackers)) ?? []
         addedAt = try container.decode(Date.self, forKey: .addedAt)
+        completedAt = try container.decodeIfPresent(Date.self, forKey: .completedAt)
         errorMessage = try container.decodeIfPresent(String.self, forKey: .errorMessage)
         bitfield = try container.decodeIfPresent(String.self, forKey: .bitfield)
         downloadSpeedHistory = (try? container.decode([Int64].self, forKey: .downloadSpeedHistory)) ?? []
@@ -95,6 +97,7 @@ struct DownloadTask: Identifiable, Equatable, Codable, Sendable {
         try container.encode(peers, forKey: .peers)
         try container.encode(trackers, forKey: .trackers)
         try container.encode(addedAt, forKey: .addedAt)
+        try container.encodeIfPresent(completedAt, forKey: .completedAt)
         try container.encodeIfPresent(errorMessage, forKey: .errorMessage)
         try container.encodeIfPresent(bitfield, forKey: .bitfield)
         try container.encode(downloadSpeedHistory, forKey: .downloadSpeedHistory)
@@ -119,6 +122,7 @@ struct DownloadTask: Identifiable, Equatable, Codable, Sendable {
         peers: [TaskPeer] = [],
         trackers: [TaskTracker] = [],
         addedAt: Date = Date(),
+        completedAt: Date? = nil,
         errorMessage: String? = nil,
         bitfield: String? = nil,
         downloadSpeedHistory: [Int64] = []
@@ -140,6 +144,7 @@ struct DownloadTask: Identifiable, Equatable, Codable, Sendable {
         self.peers = peers
         self.trackers = trackers
         self.addedAt = addedAt
+        self.completedAt = completedAt
         self.errorMessage = errorMessage
         self.bitfield = bitfield
         self.downloadSpeedHistory = downloadSpeedHistory
@@ -471,6 +476,7 @@ extension DownloadTask {
             peers: [],
             trackers: [],
             addedAt: Date(),
+            completedAt: nil,
             errorMessage: nil,
             bitfield: "f0f0f0f0f0f0f0f0f0f0", // Sample bitfield
             downloadSpeedHistory: []
@@ -498,6 +504,7 @@ extension DownloadTask {
                 peers: [],
                 trackers: [],
                 addedAt: Date().addingTimeInterval(-3600),
+                completedAt: nil,
                 errorMessage: nil,
                 downloadSpeedHistory: []
             ),

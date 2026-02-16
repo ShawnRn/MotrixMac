@@ -9,6 +9,7 @@ struct AddTaskSheet: View {
     // Default directory stored in user preferences
     @AppStorage("defaultDownloadDirectory") private var defaultDirectory =
         FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first!.path
+    @AppStorage("language") private var language = "zh-CN"
 
     @State private var urlText = ""
     @State private var saveDirectory: URL = FileManager.default.urls(
@@ -28,7 +29,7 @@ struct AddTaskSheet: View {
         VStack(spacing: 0) {
             // Header
             HStack {
-                Text("新建下载任务")
+                Text("新建下载任务".localized(for: language))
                     .font(.title2)
                     .fontWeight(.bold)
 
@@ -51,10 +52,10 @@ struct AddTaskSheet: View {
                 VStack(alignment: .leading, spacing: 24) {
                     // URL Input
                     VStack(alignment: .leading, spacing: 8) {
-                        Label("下载链接", systemImage: "link")
+                        Label("下载链接".localized(for: language), systemImage: "link")
                             .font(.headline)
 
-                        TextField("输入 URL 或磁力链接...", text: $urlText, axis: .vertical)
+                        TextField("输入 URL 或磁力链接...".localized(for: language), text: $urlText, axis: .vertical)
                             .textFieldStyle(.plain)
                             .padding(12)
                             .background {
@@ -71,7 +72,7 @@ struct AddTaskSheet: View {
                             }
 
                         if !isValidURL {
-                            Text("请输入有效的 URL 或磁力链接")
+                            Text("请输入有效的 URL 或磁力链接".localized(for: language))
                                 .font(.caption)
                                 .foregroundStyle(.red)
                         }
@@ -79,7 +80,7 @@ struct AddTaskSheet: View {
 
                     // Save Location
                     VStack(alignment: .leading, spacing: 8) {
-                        Label("保存到", systemImage: "folder")
+                        Label("保存到".localized(for: language), systemImage: "folder")
                             .font(.headline)
 
                         HStack {
@@ -91,7 +92,7 @@ struct AddTaskSheet: View {
 
                             Spacer()
 
-                            Button("选择...") {
+                            Button("选择...".localized(for: language)) {
                                 selectDirectory()
                             }
                             .buttonStyle(.bordered)
@@ -104,19 +105,19 @@ struct AddTaskSheet: View {
 
                         // Show "Set as default" only when directory differs from default
                         if saveDirectory.path != defaultDirectory {
-                            Toggle("设为默认下载目录", isOn: $setAsDefault)
+                            Toggle("设为默认下载目录".localized(for: language), isOn: $setAsDefault)
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
                     }
 
                     // Advanced Options Toggle
-                    DisclosureGroup("高级选项", isExpanded: $showAdvancedOptions) {
+                    DisclosureGroup("高级选项".localized(for: language), isExpanded: $showAdvancedOptions) {
                         VStack(alignment: .leading, spacing: 16) {
                             // Connections
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack {
-                                    Text("线程数")
+                                    Text("线程数".localized(for: language))
                                     Spacer()
                                     Text("\(connections)")
                                         .foregroundStyle(.secondary)
@@ -133,10 +134,10 @@ struct AddTaskSheet: View {
 
                             // Custom Filename
                             VStack(alignment: .leading, spacing: 8) {
-                                Text("自定义文件名")
+                                Text("自定义文件名".localized(for: language))
                                     .font(.subheadline)
 
-                                TextField("留空使用原始文件名", text: $customFilename)
+                                TextField("留空使用原始文件名".localized(for: language), text: $customFilename)
                                     .textFieldStyle(.plain)
                                     .padding(10)
                                     .background {
@@ -147,7 +148,7 @@ struct AddTaskSheet: View {
 
                             // Custom Headers
                             VStack(alignment: .leading, spacing: 8) {
-                                Text("自定义请求头")
+                                Text("自定义请求头".localized(for: language))
                                     .font(.subheadline)
 
                                 TextEditor(text: $customHeaders)
@@ -160,7 +161,7 @@ struct AddTaskSheet: View {
                                             .fill(.quaternary)
                                     }
 
-                                Text("格式：Header-Name: Value （每行一个）")
+                                Text("格式：Header-Name: Value （每行一个）".localized(for: language))
                                     .font(.caption)
                                     .foregroundStyle(.tertiary)
                             }
@@ -179,7 +180,7 @@ struct AddTaskSheet: View {
                 Button {
                     dismiss()
                 } label: {
-                    Text("取消")
+                    Text("取消".localized(for: language))
                         .font(.system(size: 13, weight: .medium))
                         .frame(width: 80, height: 28)
                         .background(Color.gray.opacity(0.15), in: Capsule())
@@ -200,7 +201,7 @@ struct AddTaskSheet: View {
                                 .controlSize(.small)
                                 .colorInvert()
                         } else {
-                            Text("确定")
+                            Text("确定".localized(for: language))
                         }
                     }
                     .font(.system(size: 13, weight: .semibold))
@@ -331,6 +332,7 @@ struct AddTaskSheet: View {
 struct AddTorrentSheet: View {
     @Environment(DownloadManager.self) private var downloadManager
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("language") private var language = "zh-CN"
 
     @State private var torrentURL: URL?
     @AppStorage("defaultConnections") private var defaultConnections = 16
@@ -367,7 +369,7 @@ struct AddTorrentSheet: View {
         VStack(spacing: 0) {
             // Header
             HStack(alignment: .center) { // Fix: specific alignment
-                Text("添加 Torrent 任务")
+                Text("添加 Torrent 任务".localized(for: language))
                     .font(.title2)
                     .fontWeight(.bold)
 
@@ -429,7 +431,7 @@ struct AddTorrentSheet: View {
                                         let isActive = filter == .all 
                                             ? (currentFilter == filter && selectedFileIndices.count == parsedFiles.count)
                                             : (currentFilter == filter)
-                                        Text(filter.rawValue)
+                                        Text(filter.rawValue.localized(for: language))
                                             .font(.caption)
                                             .padding(.horizontal, 10)
                                             .padding(.vertical, 4)
@@ -444,7 +446,7 @@ struct AddTorrentSheet: View {
                                     // Removed redundant Select All button
 
                                     
-                                    Text("已选 \(selectedFilesCount) 个文件，共 \(ByteCountFormatter.string(fromByteCount: selectedFilesSize, countStyle: .file))")
+                                    Text(String(format: "已选 %d 个文件，共 %@".localized(for: language), selectedFilesCount, ByteCountFormatter.string(fromByteCount: selectedFilesSize, countStyle: .file)))
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
@@ -521,7 +523,7 @@ struct AddTorrentSheet: View {
                                         .padding(.horizontal, 16)
                                         .fixedSize(horizontal: false, vertical: true)
 
-                                    Button("选择其他文件") {
+                                    Button("选择其他文件".localized(for: language)) {
                                         selectTorrentFile()
                                     }
                                     .buttonStyle(.bordered)
@@ -530,14 +532,14 @@ struct AddTorrentSheet: View {
                                         .font(.system(size: 48))
                                         .foregroundStyle(.secondary)
 
-                                    Text("拖放种子文件到此处")
+                                    Text("拖放种子文件到此处".localized(for: language))
                                         .font(.headline)
                                         .foregroundStyle(.secondary)
 
-                                    Text("或")
+                                    Text("或".localized(for: language))
                                         .foregroundStyle(.tertiary)
 
-                                    Button("选择文件...") {
+                                    Button("选择文件...".localized(for: language)) {
                                         selectTorrentFile()
                                     }
                                     .buttonStyle(.bordered)
@@ -553,7 +555,7 @@ struct AddTorrentSheet: View {
 
                     // Save location
                     VStack(alignment: .leading, spacing: 8) {
-                        Label("保存到", systemImage: "folder")
+                        Label("保存到".localized(for: language), systemImage: "folder")
                             .font(.headline)
 
                         HStack {
@@ -565,7 +567,7 @@ struct AddTorrentSheet: View {
 
                             Spacer()
 
-                            Button("选择...") {
+                            Button("选择...".localized(for: language)) {
                                 selectDirectory()
                             }
                             .buttonStyle(.bordered)
@@ -578,7 +580,7 @@ struct AddTorrentSheet: View {
                     }
                     
                     // Advanced Options
-                    DisclosureGroup("高级选项", isExpanded: $showAdvancedOptions) {
+                    DisclosureGroup("高级选项".localized(for: language), isExpanded: $showAdvancedOptions) {
                         VStack(alignment: .leading, spacing: 16) {
                             // Thread count
                             VStack(alignment: .leading, spacing: 8) {
@@ -602,7 +604,7 @@ struct AddTorrentSheet: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("User-Agent")
                                     .font(.subheadline)
-                                TextField("留空使用默认值", text: $customUserAgent)
+                                TextField("留空使用默认值".localized(for: language), text: $customUserAgent)
                                     .textFieldStyle(.plain)
                                     .padding(10)
                                     .background(RoundedRectangle(cornerRadius: 8).fill(.quaternary))
@@ -612,7 +614,7 @@ struct AddTorrentSheet: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Referer")
                                     .font(.subheadline)
-                                TextField("留空使用默认值", text: $customReferer)
+                                TextField("留空使用默认值".localized(for: language), text: $customReferer)
                                     .textFieldStyle(.plain)
                                     .padding(10)
                                     .background(RoundedRectangle(cornerRadius: 8).fill(.quaternary))
@@ -622,7 +624,7 @@ struct AddTorrentSheet: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Cookie")
                                     .font(.subheadline)
-                                TextField("留空使用默认值", text: $customCookie)
+                                TextField("留空使用默认值".localized(for: language), text: $customCookie)
                                     .textFieldStyle(.plain)
                                     .padding(10)
                                     .background(RoundedRectangle(cornerRadius: 8).fill(.quaternary))
@@ -630,7 +632,7 @@ struct AddTorrentSheet: View {
                             
                             // Proxy
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("代理")
+                                Text("代理".localized(for: language))
                                     .font(.subheadline)
                                 TextField("[http://][USER:PASSWORD@]HOST[:PORT]", text: $customProxy)
                                     .textFieldStyle(.plain)
@@ -639,7 +641,7 @@ struct AddTorrentSheet: View {
                             }
                             
                             // Auto jump toggle
-                            Toggle("添加后跳转到下载页面", isOn: $autoJumpOnTaskCreated)
+                            Toggle("添加后跳转到下载页面".localized(for: language), isOn: $autoJumpOnTaskCreated)
                                 .font(.subheadline)
                         }
                         .padding(.top, 12)
@@ -671,7 +673,7 @@ struct AddTorrentSheet: View {
                 Button {
                     addTorrent()
                 } label: {
-                    Text("确定")
+                    Text("确定".localized(for: language))
                         .font(.system(size: 13, weight: .semibold))
                         .frame(width: 80, height: 28)
                         .background(Color.accentColor, in: Capsule())
@@ -706,10 +708,11 @@ struct AddTorrentSheet: View {
                 downloadManager.pendingTorrentURL = nil
             }
         }
-        .alert("未选择文件", isPresented: $showNoFileSelectedAlert) {
-            Button("确定", role: .cancel) { }
+
+        .alert("未选择文件".localized(for: language), isPresented: $showNoFileSelectedAlert) {
+            Button("确定".localized(for: language), role: .cancel) { }
         } message: {
-            Text("请至少选择一个文件以开始下载。")
+            Text("请至少选择一个文件以开始下载。".localized(for: language))
         }
     }
 

@@ -310,7 +310,7 @@
 				CODE_SIGN_ENTITLEMENTS = MotrixMac/MotrixMac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2026021301;
+				CURRENT_PROJECT_VERSION = 2026021600;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = A4P8NY6A4J;
 				ENABLE_APP_SANDBOX = NO;
@@ -318,12 +318,13 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = MotrixMac/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
-				MARKETING_VERSION = 1.1.7;
+				MARKETING_VERSION = 1.1.8;
 				PRODUCT_BUNDLE_IDENTIFIER = com.shawnrain.MotrixMac;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -345,7 +346,7 @@
 				CODE_SIGN_ENTITLEMENTS = MotrixMac/MotrixMac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2026021301;
+				CURRENT_PROJECT_VERSION = 2026021600;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = A4P8NY6A4J;
 				ENABLE_APP_SANDBOX = NO;
@@ -353,12 +354,13 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = MotrixMac/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
-				MARKETING_VERSION = 1.1.7;
+				MARKETING_VERSION = 1.1.8;
 				PRODUCT_BUNDLE_IDENTIFIER = com.shawnrain.MotrixMac;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;

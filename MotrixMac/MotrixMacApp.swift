@@ -56,7 +56,7 @@ struct MotrixMacApp: App {
             }
         }
         .commands {
-            MotrixCommands(downloadManager: downloadManager)
+            MotrixCommands(downloadManager: downloadManager, language: language)
         }
 
         MotrixSecondaryScenes(downloadManager: downloadManager)
@@ -85,10 +85,11 @@ struct MotrixSecondaryScenes: Scene {
 /// Dedicated commands for the main menu
 struct MotrixCommands: Commands {
     let downloadManager: DownloadManager
+    let language: String
 
     var body: some Commands {
         CommandGroup(replacing: .appInfo) {
-            Button("关于 MotrixMac") {
+            Button("关于 MotrixMac".localized(for: language)) {
                 DownloadManager.shared.currentCategory = .about
                 DownloadManager.shared.shouldOpenMainWindow = true
                 NSApp.activate(ignoringOtherApps: true)
@@ -96,35 +97,35 @@ struct MotrixCommands: Commands {
         }
 
         CommandGroup(replacing: .appSettings) {
-            Button("设置...") {
+            Button("设置...".localized(for: language)) {
                 NotificationCenter.default.post(name: .openSettings, object: nil)
             }
             .keyboardShortcut(",", modifiers: .command)
             
-            Button("检查更新...") {
+            Button("检查更新...".localized(for: language)) {
                 AppDelegate.shared?.updaterController.checkForUpdates(nil)
             }
         }
 
         CommandGroup(replacing: .newItem) {
-            Button("新建下载") {
+            Button("新建下载".localized(for: language)) {
                 downloadManager.showAddTaskSheet = true
             }
             .keyboardShortcut("n", modifiers: .command)
 
-            Button("新建种子下载") {
+            Button("新建种子下载".localized(for: language)) {
                 downloadManager.showAddTorrentSheet = true
             }
             .keyboardShortcut("t", modifiers: [.command, .shift])
         }
 
         CommandGroup(after: .toolbar) {
-            Button("全部暂停") {
+            Button("全部暂停".localized(for: language)) {
                 Task { await downloadManager.pauseAll() }
             }
             .keyboardShortcut("p", modifiers: [.command, .option])
 
-            Button("全部恢复") {
+            Button("全部恢复".localized(for: language)) {
                 Task { await downloadManager.resumeAll() }
             }
             .keyboardShortcut("r", modifiers: [.command, .option])

@@ -15,6 +15,8 @@ struct TaskListView: View {
     // Marquee Selection State
     @State private var dragStart: CGPoint?
     @State private var dragCurrent: CGPoint?
+    @State private var selectionRect: CGRect = .zero
+    @AppStorage("language") private var language = "zh-CN"
     @State private var itemFrames: [String: CGRect] = [:]
     @State private var itemWindowFrames: [String: CGRect] = [:] // 追踪相对于窗口内容区域的坐标
     @State private var itemImages: [String: NSImage] = [:] // 缓存缩略图用于动画
@@ -102,7 +104,7 @@ struct TaskListView: View {
         VStack(spacing: 12) {
             ProgressView()
                 .controlSize(.regular)
-            Text("正在启动下载引擎...")
+            Text("正在启动下载引擎...".localized(for: language))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -165,11 +167,13 @@ struct TaskListView: View {
 
                 }
                 .coordinateSpace(name: "TaskListSpace")
+                .textSelection(.disabled) // Fix cursor turning to I-beam
             }
             .onPreferenceChange(TaskItemFramePreferenceKey.self) { frames in
                 itemFrames = frames
             }
             .scrollContentBackground(.hidden)
+            .textSelection(.disabled) // Ensure entire scroll area, including empty space, disables text selection
             .background(Color.clear)
             .overlay {
                 engineStatusOverlays
@@ -459,9 +463,9 @@ struct TaskListView: View {
 
     private var selectedDisplayName: String {
         if selectedTaskIds.count == 1 {
-            return downloadManager.filteredTasks.first(where: { $0.id == selectedTaskIds.first })?.name ?? "1 个任务"
+            return downloadManager.filteredTasks.first(where: { $0.id == selectedTaskIds.first })?.name ?? "1 个任务".localized(for: language)
         } else {
-            return "\(selectedTaskIds.count) 个任务"
+            return "\(selectedTaskIds.count) " + "个任务".localized(for: language)
         }
     }
 
@@ -831,6 +835,7 @@ struct TaskListHeader: View {
     let taskCount: Int
     @Binding var searchText: String
     @Binding var sortOrder: SortOrder
+    @AppStorage("language") private var language = "zh-CN"
     var onDeleteAll: () -> Void
 
 
@@ -840,20 +845,21 @@ struct TaskListHeader: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     if category == .downloading && downloadManager.singleListMode {
-                        Text("所有下载任务")
+                        Text("所有下载任务".localized(for: language))
                             .font(.title2)
                             .fontWeight(.semibold)
                     } else {
-                        Text(category.title)
+                        Text(category.title.localized(for: language))
                             .font(.title2)
                             .fontWeight(.semibold)
                     }
 
-                    Text("\(taskCount) 个任务")
+
+
+                    Text("\(taskCount) " + "个任务".localized(for: language))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
-                .fixedSize(horizontal: true, vertical: false)
 
                 Spacer()
             }
@@ -868,7 +874,7 @@ struct TaskListHeader: View {
                     Image(systemName: "magnifyingglass")
                         .foregroundStyle(.secondary)
 
-                    TextField("搜索", text: $searchText)
+                    TextField("搜索".localized(for: language), text: $searchText)
                         .textFieldStyle(.plain)
 
                     if !searchText.isEmpty {
@@ -901,7 +907,7 @@ struct TaskListHeader: View {
                     }
                     .buttonStyle(.plain)
                     .frame(width: 24)
-                    .help(category == .completed ? "全部清除" : "全部移除")
+                    .help(category == .completed ? "全部清除".localized(for: language) : "全部移除".localized(for: language))
                 }
 
                 // Sort menu
@@ -911,7 +917,7 @@ struct TaskListHeader: View {
                             sortOrder = order
                         } label: {
                             HStack {
-                                Text(order.title)
+                                Text(order.title.localized(for: language))
                                 if sortOrder == order {
                                     Image(systemName: "checkmark")
                                 }
@@ -937,6 +943,7 @@ struct TaskListHeader: View {
 struct EmptyTaskListView: View {
     let category: TaskCategory
     @Environment(DownloadManager.self) private var downloadManager
+    @AppStorage("language") private var language = "zh-CN"
 
     var body: some View {
         VStack(spacing: 20) {
@@ -954,7 +961,8 @@ struct EmptyTaskListView: View {
                 Button {
                     downloadManager.showAddTaskSheet = true
                 } label: {
-                    Label("添加下载", systemImage: "plus")
+                    Label("添加下载".localized(for: language), systemImage: "plus")
+                        .font(.system(size: 14, weight: .medium))
                         .font(.system(size: 14, weight: .medium))
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
@@ -980,8 +988,8 @@ struct EmptyTaskListView: View {
 
     private var emptyMessage: String {
         switch category {
-        case .downloading: return "暂无下载任务"
-        case .completed: return "暂无已完成任务"
+        case .downloading: return "暂无下载任务".localized(for: language)
+        case .completed: return "暂无已完成任务".localized(for: language)
         case .settings: return ""
         case .about: return ""
         }

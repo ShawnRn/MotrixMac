@@ -20,6 +20,7 @@ struct TaskItemView: View {
     @State private var showDeleteConfirmation = false
     @State private var deleteFiles = false
     @State private var rememberChoice = false
+    @AppStorage("language") private var language = "zh-CN"
     
     var body: some View {
         HStack(alignment: .center, spacing: 16) {
@@ -74,7 +75,9 @@ struct TaskItemView: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .foregroundStyle(task.isFileMissing ? .secondary : .primary)
+                    .foregroundStyle(task.isFileMissing ? .secondary : .primary)
                     .opacity(task.isFileMissing ? 0.8 : 1.0)
+                    .allowsHitTesting(false) // Prevent text selection cursor
                 
                 // Row 2: Status Metadata (Subheadline)
                 HStack(spacing: 8) {
@@ -97,10 +100,11 @@ struct TaskItemView: View {
                     // Row 2: Pre-calculated Status line (Scheme A)
                     // Status text
                     if !task.formattedStatusLine.isEmpty {
-                         Text(task.formattedStatusLine + (task.isFileMissing ? " · 已移除" : ""))
-                            .font(.subheadline)
-                            .foregroundStyle(task.isFileMissing ? .tertiary : .secondary)
-                    }
+                             Text(task.formattedStatusLine + (task.isFileMissing ? " · " + "已移除".localized(for: language) : ""))
+                                .font(.subheadline)
+                                .foregroundStyle(task.isFileMissing ? .tertiary : .secondary)
+                                .allowsHitTesting(false) // Prevent text selection cursor
+                        }
                 }
             }
             
@@ -185,7 +189,9 @@ struct FileIconView: View {
 struct StatusBadge: View {
     let status: String
     var displayStatus: String? = nil
+
     var isFileMissing: Bool = false
+    @AppStorage("language") private var language = "zh-CN"
 
     var body: some View {
         Text(displayText)
@@ -202,18 +208,18 @@ struct StatusBadge: View {
 
     private var displayText: String {
         if let display = displayStatus {
-            if display == "Connecting..." { return "连接中..." }
-            if display == "做种中" { return "做种中" }
-            if display == "下载中" { return "下载中" }
+            if display == "Connecting..." { return "连接中...".localized(for: language) }
+            if display == "做种中" { return "做种中".localized(for: language) }
+            if display == "下载中" { return "下载中".localized(for: language) }
         }
 
         switch status {
-        case "waiting": return "等待中"
-        case "paused": return "已暂停"
-        case "complete": return isFileMissing ? "已完成 · 已移除" : "已完成"
-        case "error": return "出现错误"
-        case "removed": return "已取消"
-        case "active": return "下载中"
+        case "waiting": return "等待中".localized(for: language)
+        case "paused": return "已暂停".localized(for: language)
+        case "complete": return isFileMissing ? "已完成".localized(for: language) + " · " + "已移除".localized(for: language) : "已完成".localized(for: language)
+        case "error": return "出现错误".localized(for: language)
+        case "removed": return "已取消".localized(for: language)
+        case "active": return "下载中".localized(for: language)
         default: return status.capitalized
         }
     }
@@ -244,6 +250,7 @@ struct TaskActionButtons: View {
     @Binding var showDeleteConfirmation: Bool
     @Binding var deleteFiles: Bool
     let onShowInfo: () -> Void
+    @AppStorage("language") private var language = "zh-CN"
 
     var body: some View {
         HStack(spacing: 8) {
@@ -251,26 +258,26 @@ struct TaskActionButtons: View {
                 ActionButton(icon: "stop.fill", color: .red) {
                     Task { await downloadManager.stopSeeding(task) }
                 }
-                .help("停止做种")
+                .help("停止做种".localized(for: language))
             } else if task.canPause {
                 ActionButton(icon: "pause.fill", color: .orange) {
                     Task { await downloadManager.pauseTask(task) }
                 }
-                .help("暂停")
+                .help("暂停".localized(for: language))
             }
 
             if task.canResume {
                 ActionButton(icon: "play.fill", color: .green) {
                     Task { await downloadManager.resumeTask(task) }
                 }
-                .help("恢复")
+                .help("恢复".localized(for: language))
             }
 
             if task.status == "error" || task.status == "removed" {
                 ActionButton(icon: "arrow.clockwise", color: .green) {
                     Task { await downloadManager.retryTask(task) }
                 }
-                .help(task.status == "removed" ? "重新下载" : "重试")
+                .help(task.status == "removed" ? "重新下载".localized(for: language) : "重试".localized(for: language))
             }
 
 
@@ -278,7 +285,7 @@ struct TaskActionButtons: View {
             ActionButton(icon: "folder", color: .blue) {
                 downloadManager.revealInFinder(task)
             }
-            .help("在 Finder 中显示")
+            .help("在 Finder 中显示".localized(for: language))
 
             ActionButton(icon: "trash", color: .red) {
                 if downloadManager.skipDeleteConfirmation {
@@ -291,12 +298,12 @@ struct TaskActionButtons: View {
                     showDeleteConfirmation = true
                 }
             }
-            .help("在任务列表中移除")
+            .help("在任务列表中移除".localized(for: language))
             
             ActionButton(icon: "info.circle", color: .secondary) {
                 onShowInfo()
             }
-            .help("显示详情")
+            .help("显示详情".localized(for: language))
             
         }
     }
@@ -327,55 +334,56 @@ struct ActionButton: View {
 struct TaskContextMenu: View {
     @Environment(DownloadManager.self) private var downloadManager
     let task: DownloadTask
+    @AppStorage("language") private var language = "zh-CN"
 
     var body: some View {
         Group {
             if task.isSeeding {
-                Button("停止做种") {
+                Button("停止做种".localized(for: language)) {
                     Task { await downloadManager.stopSeeding(task) }
                 }
             } else if task.canPause {
-                Button("暂停") {
+                Button("暂停".localized(for: language)) {
                     Task { await downloadManager.pauseTask(task) }
                 }
             }
 
             if task.canResume {
-                Button("恢复") {
+                Button("恢复".localized(for: language)) {
                     Task { await downloadManager.resumeTask(task) }
                 }
             }
 
             if task.status == "error" || task.status == "removed" {
-                Button(task.status == "removed" ? "重新下载" : "重试") {
+                Button(task.status == "removed" ? "重新下载".localized(for: language) : "重试".localized(for: language)) {
                     Task { await downloadManager.retryTask(task) }
                 }
             }
 
             if task.canCancel && task.status != "removed" {
-                Button("取消下载") {
+                Button("取消下载".localized(for: language)) {
                     Task { await downloadManager.cancelTask(task) }
                 }
             }
 
             Divider()
 
-            Button("在 Finder 中显示") {
+            Button("在 Finder 中显示".localized(for: language)) {
                 downloadManager.revealInFinder(task)
             }
 
-            Button("复制下载链接") {
+            Button("复制下载链接".localized(for: language)) {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(task.uri, forType: .string)
             }
 
             Divider()
 
-            Button("移除记录", role: .destructive) {
+            Button("移除记录".localized(for: language), role: .destructive) {
                 Task { await downloadManager.deleteTask(task) }
             }
 
-            Button("移除记录并删除本地文件", role: .destructive) {
+            Button("移除记录并删除本地文件".localized(for: language), role: .destructive) {
                 Task { await downloadManager.deleteTask(task, withFiles: true) }
             }
         }
@@ -390,6 +398,7 @@ struct DeleteConfirmationSheet: View {
     @Binding var rememberChoice: Bool
     let onConfirm: () -> Void
     let onCancel: () -> Void
+    @AppStorage("language") private var language = "zh-CN"
 
     var body: some View {
         VStack(spacing: 24) {
@@ -408,7 +417,7 @@ struct DeleteConfirmationSheet: View {
                 VStack(alignment: .leading, spacing: 16) {
                     // Question text
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("确认移除任务？")
+                        Text("确认移除任务？".localized(for: language))
                             .font(.system(size: 16, weight: .bold))
                         Text(taskName)
                             .font(.system(size: 13))
@@ -419,9 +428,9 @@ struct DeleteConfirmationSheet: View {
                     
                     // Options
                     VStack(alignment: .leading, spacing: 10) {
-                        Toggle("同时删除本地文件", isOn: $deleteFiles)
+                        Toggle("同时删除本地文件".localized(for: language), isOn: $deleteFiles)
                             .toggleStyle(.checkbox)
-                        Toggle("以后不再询问", isOn: $rememberChoice)
+                        Toggle("以后不再询问".localized(for: language), isOn: $rememberChoice)
                             .toggleStyle(.checkbox)
                     }
                     .font(.system(size: 13))
@@ -434,7 +443,7 @@ struct DeleteConfirmationSheet: View {
                 Button {
                     onCancel()
                 } label: {
-                    Text("取消")
+                    Text("取消".localized(for: language))
                         .font(.system(size: 13, weight: .medium))
                         .frame(width: 80, height: 28)
                         .background(Color.gray.opacity(0.15), in: Capsule())
@@ -449,7 +458,7 @@ struct DeleteConfirmationSheet: View {
                 Button {
                     onConfirm()
                 } label: {
-                    Text("确定")
+                    Text("确定".localized(for: language))
                         .font(.system(size: 13, weight: .semibold))
                         .frame(width: 80, height: 28)
                         .background(Color.red, in: Capsule())

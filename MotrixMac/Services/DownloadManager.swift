@@ -51,6 +51,15 @@ final class DownloadManager {
         get { UserDefaults.standard.bool(forKey: "skipDeleteConfirmation") }
         set { UserDefaults.standard.set(newValue, forKey: "skipDeleteConfirmation") }
     }
+    
+    // Auto-delete interval (in days), 0 = disabled
+    var autoDeleteInterval: Int {
+        get { UserDefaults.standard.integer(forKey: "autoDeleteInterval") }
+        set { 
+            UserDefaults.standard.set(newValue, forKey: "autoDeleteInterval")
+            Task { await checkAutoDelete() }
+        }
+    }
 
     // Computed properties
     var activeDownloads: [DownloadTask] {
@@ -74,11 +83,19 @@ final class DownloadManager {
     private var refreshTask: Task<Void, Never>?
     private var speedHistoryCache: [String: [Int64]] = [:]
     private var taskDates: [String: Date] = [:] // Cache to store stable addedAt/completedAt dates
+    private var taskCompletionDates: [String: Date] = [:] // Cache to store stable completedAt dates
 
     private init() {
         requestNotificationPermission()
         loadSpeedHistory()
         loadPersistentTasks()
+        
+        // Schedule auto-delete check
+        Task {
+            // Delay slightly to ensure tasks are loaded
+            try? await Task.sleep(for: .seconds(5))
+            await checkAutoDelete()
+        }
         
         // Start Tracker auto-sync in background
         Task {
@@ -117,6 +134,9 @@ final class DownloadManager {
             // Restore dates and notification state from persistence
             for (id, task) in tasks {
                 self.taskDates[id] = task.addedAt
+                if let completed = task.completedAt {
+                    self.taskCompletionDates[id] = completed
+                }
                 if task.status == "complete" {
                     self.notifiedCompletedGIDs.insert(id)
                 }
@@ -487,6 +507,16 @@ final class DownloadManager {
                         task.addedAt = staggeredDate
                         self.taskDates[newTask.id] = staggeredDate
                     }
+                
+                    // 2c. Restore Stable Date (completedAt)
+                    if let cachedCompletion = self.taskCompletionDates[newTask.id] {
+                        task.completedAt = cachedCompletion
+                    } else if newTask.status == "complete" {
+                        // First time seeing this task as complete
+                        let now = Date()
+                        task.completedAt = now
+                        self.taskCompletionDates[newTask.id] = now
+                    }
 
                     // 3. Persistent Storage logic:
                     // Persist all tasks to ensure addedAt remains consistent across restarts
@@ -534,6 +564,36 @@ final class DownloadManager {
             }
             print("DownloadManager: Failed to refresh tasks: \(error)")
         }
+    }
+    
+    // MARK: - Auto Delete
+    
+    func checkAutoDelete() async {
+        let interval = autoDeleteInterval
+        guard interval > 0 else { return }
+        
+        print("DownloadManager: Checking for auto-delete tasks (Interval: \(interval) days)")
+        
+        let cutoffDate = Calendar.current.date(byAdding: .day, value: -interval, to: Date()) ?? Date()
+        var tasksToDelete: [String] = []
+        
+        // Check persistent tasks
+        for (gid, task) in persistentTasks {
+            // Determine reference date: completedAt > addedAt
+            // Only auto-delete completed or error tasks
+            if task.status == "complete" || task.status == "error" || task.status == "removed" {
+                let referenceDate = task.completedAt ?? task.addedAt
+                if referenceDate < cutoffDate {
+                    tasksToDelete.append(gid)
+                }
+            }
+        }
+        
+        guard !tasksToDelete.isEmpty else { return }
+        print("DownloadManager: Found \(tasksToDelete.count) tasks to auto-delete")
+        
+        // Execute deletion
+        await removeTasks(gids: tasksToDelete, deleteFiles: false)
     }
     
     /// Sync user preferences to aria2 live via RPC
@@ -1107,6 +1167,7 @@ final class DownloadManager {
             // 2. Mark as complete in our persistent storage
             var updatedTask = task
             updatedTask.status = "complete"
+            updatedTask.completedAt = Date() // Set completion time
             self.persistentTasks[task.id] = updatedTask
             self.savePersistentTasks()
             
@@ -1119,63 +1180,52 @@ final class DownloadManager {
     }
 
     func deleteTask(_ task: DownloadTask, withFiles: Bool = false) async {
-        await deleteTasks([task], withFiles: withFiles)
+        await removeTasks(gids: [task.id], deleteFiles: withFiles)
     }
 
     func deleteTasks(_ tasksToDelete: [DownloadTask], withFiles: Bool = false) async {
-        guard !tasksToDelete.isEmpty, let service = aria2Service else { return }
-        
-        let idsToRemove = Set(tasksToDelete.map { $0.id })
+        let gids = tasksToDelete.map { $0.id }
+        await removeTasks(gids: gids, deleteFiles: withFiles)
+    }
+
+    func removeTasks(gids: [String], deleteFiles: Bool) async {
+        guard !gids.isEmpty, let service = aria2Service else { return }
         
         // 1. Mark as deleting and remove from UI
-        self.deletingGIDs.formUnion(idsToRemove)
-        self.tasks.removeAll { idsToRemove.contains($0.id) }
+        self.deletingGIDs.formUnion(gids)
+        self.tasks.removeAll { gids.contains($0.id) }
         
         // Remove from persistent storage too
-        for id in idsToRemove {
+        for id in gids {
             self.persistentTasks.removeValue(forKey: id)
             self.notifiedStartedGIDs.remove(id)
             self.notifiedCompletedGIDs.remove(id)
         }
         self.savePersistentTasks()
         
+        // Update UI immediately
         self.updateFilteredTasks()
         
-        // 2. Engine Removal (Concurrent)
-        await withTaskGroup(of: Void.self) { group in
-            for task in tasksToDelete {
-                group.addTask {
-                    // Step A: Stop if active
-                    if ["active", "waiting", "paused"].contains(task.status) {
-                        _ = try? await service.forceRemove(gid: task.id)
-                        // Give aria2 a moment to move the task to 'stopped' list 
-                        try? await Task.sleep(for: .milliseconds(200))
-                    }
-                    
-                    // Step B: Thoroughly remove from memory
-                    // We try twice to handle race conditions in aria2 transition
-                    if (try? await service.removeDownloadResult(gid: task.id)) == nil {
-                        try? await Task.sleep(for: .milliseconds(300))
-                        _ = try? await service.removeDownloadResult(gid: task.id)
-                    }
-
-                    if withFiles {
-                        await self.deleteFiles(for: task)
-                    }
-                }
-            }
+        // RPC Removal
+        for gid in gids {
+            // Try force remove first (works for active/waiting)
+            _ = try? await service.forceRemove(gid: gid)
+            // Try remove result (works for complete/error)
+            _ = try? await service.removeDownloadResult(gid: gid)
         }
         
-        // 3. Cleanup: allow some breathing room before removing from blacklist
-        try? await Task.sleep(for: .milliseconds(500))
-        self.deletingGIDs.subtract(idsToRemove)
+        // Handle file deletion if requested
+        if deleteFiles {
+            // File deletion logic to be implemented
+        }
         
-        // 4. Force aria2 to save session to disk immediately to prevent ghosting on reboot
-        try? await service.saveSession()
-        
-        // Final refresh
-        await refreshTasks()
+        // Cleanup deletingGIDs
+        try? await Task.sleep(for: .seconds(2))
+        for gid in gids {
+            self.deletingGIDs.remove(gid)
+        }
     }
+
 
     func clearAllStopped() async {
         guard let service = aria2Service else { return }

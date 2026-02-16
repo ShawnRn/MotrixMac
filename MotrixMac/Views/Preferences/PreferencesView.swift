@@ -6,12 +6,12 @@ enum EmbeddedSettingsTab: String, Identifiable, CaseIterable {
     case general, downloads, network, advanced
     var id: String { self.rawValue }
     
-    var title: String {
+    func title(for language: String) -> String {
         switch self {
-        case .general: return "通用"
-        case .downloads: return "下载"
-        case .network: return "网络"
-        case .advanced: return "高级"
+        case .general: return "通用".localized(for: language)
+        case .downloads: return "下载".localized(for: language)
+        case .network: return "网络".localized(for: language)
+        case .advanced: return "高级".localized(for: language)
         }
     }
 }
@@ -19,11 +19,12 @@ enum EmbeddedSettingsTab: String, Identifiable, CaseIterable {
 struct LiquidSettingsPicker: View {
     @Binding var selection: EmbeddedSettingsTab
     @Namespace var namespace
+    @AppStorage("language") private var language = "zh-CN"
     
     var body: some View {
         HStack(spacing: 0) {
             ForEach(EmbeddedSettingsTab.allCases) { tab in
-                Text(tab.title)
+                Text(tab.title(for: language))
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(selection == tab ? .primary : .secondary)
                     .padding(.horizontal, 18)
@@ -49,6 +50,7 @@ struct LiquidSettingsPicker: View {
                 }
             }
         }
+        .textSelection(.disabled)
         .padding(4) // Absolute uniform gap
         .background {
             // Concentric: Inner (13) + Padding (4) = 17
@@ -62,28 +64,32 @@ struct LiquidSettingsPicker: View {
 /// Standalone Preferences view for macOS Settings scene
 struct PreferencesView: View {
     @AppStorage("theme") private var theme = "auto"
+    @AppStorage("language") private var language = "zh-CN"
     @State private var selectedTab: EmbeddedSettingsTab = .general
     
     var body: some View {
         TabView(selection: $selectedTab) {
             GeneralPreferencesTab()
-                .tabItem { Label("通用", systemImage: "gear") }
+                .tabItem { Label("通用".localized(for: language), systemImage: "gear") }
                 .tag(EmbeddedSettingsTab.general)
 
             DownloadsPreferencesTab()
-                .tabItem { Label("下载", systemImage: "arrow.down.circle") }
+                .tabItem { Label("下载".localized(for: language), systemImage: "arrow.down.circle") }
                 .tag(EmbeddedSettingsTab.downloads)
 
             NetworkPreferencesTab()
-                .tabItem { Label("网络", systemImage: "network") }
+                .tabItem { Label("网络".localized(for: language), systemImage: "network") }
                 .tag(EmbeddedSettingsTab.network)
 
             AdvancedPreferencesTab()
-                .tabItem { Label("高级", systemImage: "gearshape.2") }
+                .tabItem { Label("高级".localized(for: language), systemImage: "gearshape.2") }
                 .tag(EmbeddedSettingsTab.advanced)
         }
         .tabViewStyle(.automatic)
         .frame(width: 500, height: 400)
+        .onTapGesture {
+            NSApp.keyWindow?.makeFirstResponder(nil)
+        }
     }
 }
 
@@ -110,6 +116,9 @@ struct EmbeddedPreferencesView: View {
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: activeTab)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onTapGesture {
+            NSApp.keyWindow?.makeFirstResponder(nil)
+        }
     }
 }
 
@@ -125,72 +134,92 @@ struct GeneralPreferencesTab: View {
     @AppStorage("skipDeleteConfirmation") private var skipDeleteConfirmation = false
     @AppStorage("showInDock") private var showInDock = true
     @AppStorage("singleListMode") private var singleListMode = false
+    @AppStorage("autoDeleteInterval") private var autoDeleteInterval = 0
 
     var body: some View {
         Form {
             Section {
-                Toggle("开机启动", isOn: $launchAtLogin)
+                Toggle("开机启动".localized(for: language), isOn: $launchAtLogin)
                     .onChange(of: launchAtLogin) { _, newValue in
                         updateLaunchAtLogin(enabled: newValue)
                     }
+                    .textSelection(.disabled)
 
                 InfoToggle(
-                    title: "静默启动",
-                    info: "启用后，开机启动时不会自动显示主窗口",
+                    title: "静默启动".localized(for: language),
+                    info: "启用后，开机启动时不会自动显示主窗口".localized(for: language),
                     isOn: $silentStart
                 )
                     .disabled(!launchAtLogin)
                     .foregroundColor(launchAtLogin ? .primary : .secondary)
 
                 InfoToggle(
-                    title: "在 Dock 中显示",
-                    info: "是否在 macOS Dock 栏显示应用图标",
+                    title: "在 Dock 中显示".localized(for: language),
+                    info: "是否在 macOS Dock 栏显示应用图标".localized(for: language),
                     isOn: $showInDock
                 )
 
                 InfoToggle(
-                    title: "在菜单栏显示速度",
-                    info: "在系统菜单栏实时显示当前下载和上传速度",
+                    title: "在菜单栏显示速度".localized(for: language),
+                    info: "在系统菜单栏实时显示当前下载和上传速度".localized(for: language),
                     isOn: $showSpeedInMenuBar
                 )
                 
                 InfoToggle(
-                    title: "自动跳转到下载页面",
-                    info: "新建任务后自动跳转到下载页面",
+                    title: "自动跳转到下载页面".localized(for: language),
+                    info: "新建任务后自动跳转到下载页面".localized(for: language),
                     isOn: $autoJumpOnTaskCreated
                 )
                 
                 InfoToggle(
-                    title: "快速删除任务",
-                    info: "删除任务前无需确认",
+                    title: "快速删除任务".localized(for: language),
+                    info: "删除任务前无需确认".localized(for: language),
                     isOn: $skipDeleteConfirmation
                 )
 
+
+
                 InfoToggle(
-                    title: "单列表模式",
-                    info: "融合下载中和已完成列表，将所有任务显示在同一个主页视图中。",
+                    title: "单列表模式".localized(for: language),
+                    info: "融合下载中和已完成列表，将所有任务显示在同一个主页视图中。".localized(for: language),
                     isOn: $singleListMode
                 )
             }
 
             Section {
-                Picker("外观", selection: $theme) {
-                    Text("跟随系统").tag("auto")
-                    Text("浅色").tag("light")
-                    Text("深色").tag("dark")
-                }
 
-                Picker("语言", selection: $language) {
+                Picker("外观".localized(for: language), selection: $theme) {
+                    Text("跟随系统".localized(for: language)).tag("auto")
+                    Text("浅色".localized(for: language)).tag("light")
+                    Text("深色".localized(for: language)).tag("dark")
+                }
+                .textSelection(.disabled)
+
+                Picker("语言".localized(for: language), selection: $language) {
                     Text("English").tag("en")
                     Text("简体中文").tag("zh-CN")
                     Text("繁體中文").tag("zh-TW")
                     Text("日本語").tag("ja")
                     Text("한국어").tag("ko")
                 }
+                .textSelection(.disabled)
+                
+                Picker("自动清除任务".localized(for: language), selection: $autoDeleteInterval) {
+                    Text("1 天".localized(for: language)).tag(1)
+                    Text("3 天".localized(for: language)).tag(3)
+                    Text("7 天".localized(for: language)).tag(7)
+                    Text("10 天".localized(for: language)).tag(10)
+                    Text("1 个月".localized(for: language)).tag(30)
+                    Text("3 个月".localized(for: language)).tag(90)
+                    Text("关闭".localized(for: language)).tag(0)
+                }
+                .textSelection(.disabled)
             }
+
         }
         .formStyle(.grouped)
         .padding()
+        .textSelection(.disabled) // Fix cursor turning to text selection I-beam
     }
 
     private func updateLaunchAtLogin(enabled: Bool) {
@@ -231,6 +260,9 @@ struct DownloadsPreferencesTab: View {
     @AppStorage("seedTime") private var seedTime = 60 // minutes
     @AppStorage("continueDownload") private var continueDownload = true
 
+    @AppStorage("language") private var language = "zh-CN"
+
+
     var body: some View {
         Form {
             Section {
@@ -248,16 +280,17 @@ struct DownloadsPreferencesTab: View {
                         selectDirectory()
                     }
                 }
+                .textSelection(.disabled)
             } header: {
-                Text("保存位置")
+                Text("保存位置".localized(for: language))
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             Section {
-                Stepper("最大同时下载数：\(maxConcurrent)", value: $maxConcurrent, in: 1...10)
+                Stepper("最大同时下载数：".localized(for: language) + "\(maxConcurrent)", value: $maxConcurrent, in: 1...10)
                 
                 HStack {
-                    Text("单任务最大线程数：\(defaultConnections)")
+                    Text("单任务最大线程数：".localized(for: language) + "\(defaultConnections)")
                         .fixedSize()
                     Spacer()
                     Slider(value: Binding(
@@ -272,14 +305,14 @@ struct DownloadsPreferencesTab: View {
                     }
                 }
 
-                Toggle("断点续传", isOn: $continueDownload)
+                Toggle("断点续传".localized(for: language), isOn: $continueDownload)
             } header: {
-                Text("任务管理")
+                Text("任务管理".localized(for: language))
             }
 
             Section {
                 HStack {
-                    Text("上传限速")
+                    Text("上传限速".localized(for: language))
                     Spacer()
                     TextField("", value: $maxUploadSpeed, format: .number)
                         .textFieldStyle(.plain)
@@ -301,7 +334,7 @@ struct DownloadsPreferencesTab: View {
                 }
 
                 HStack {
-                    Text("下载限速")
+                    Text("下载限速".localized(for: language))
                     Spacer()
                     TextField("", value: $maxDownloadSpeed, format: .number)
                         .textFieldStyle(.plain)
@@ -322,72 +355,75 @@ struct DownloadsPreferencesTab: View {
                     .frame(width: 100)
                 }
 
-                Text("设为 0 表示无限制")
+                Text("设为 0 表示无限制".localized(for: language))
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             } header: {
-                Text("传输设置")
+                Text("传输设置".localized(for: language))
             }
 
             Section {
                 InfoToggle(
-                    title: "保存磁力链接元数据为种子文件",
-                    info: "下载磁力链接时，自动保存 .torrent 种子文件到下载目录",
+                    title: "保存磁力链接元数据为种子文件".localized(for: language),
+                    info: "下载磁力链接时，自动保存 .torrent 种子文件到下载目录".localized(for: language),
                     isOn: $btSaveMetadata
                 )
                 
                 InfoToggle(
-                    title: "自动开始下载磁力链接、种子文件",
-                    info: "添加任务后自动开始下载，无需手动确认",
+                    title: "自动开始下载磁力链接、种子文件".localized(for: language),
+                    info: "添加任务后自动开始下载，无需手动确认".localized(for: language),
                     isOn: $btAutoStart
                 )
                 
                 InfoToggle(
-                    title: "持续做种，直到手动停止",
-                    info: "任务完成后继续做种，直到手动移除或暂停",
+                    title: "持续做种，直到手动停止".localized(for: language),
+                    info: "任务完成后继续做种，直到手动移除或暂停".localized(for: language),
                     isOn: $btContinuousSeeding
                 )
                 
                 if !btContinuousSeeding {
-                    HStack {
-                        Text("做种分享率")
-                        Spacer()
-                        TextField("", value: $seedRatio, format: .number)
-                            .textFieldStyle(.plain)
-                            .padding(6)
-                            .frame(width: 80)
-                            .background {
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(Color(nsColor: .controlBackgroundColor))
-                                RoundedRectangle(cornerRadius: 6)
-                                    .stroke(Color.primary.opacity(0.1), lineWidth: 1)
-                            }
+                    Group {
+                        HStack {
+                            Text("做种分享率".localized(for: language))
+                            Spacer()
+                            TextField("", value: $seedRatio, format: .number)
+                                .textFieldStyle(.plain)
+                                .padding(6)
+                                .frame(width: 80)
+                                .background {
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .fill(Color(nsColor: .controlBackgroundColor))
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+                                }
+                        }
+                        
+                        HStack {
+                            Text("做种时间 (分钟)".localized(for: language))
+                            Spacer()
+                            TextField("", value: $seedTime, format: .number)
+                                .textFieldStyle(.plain)
+                                .padding(6)
+                                .frame(width: 80)
+                                .background {
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .fill(Color(nsColor: .controlBackgroundColor))
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+                                }
+                        }
                     }
-                    
-                    HStack {
-                        Text("做种时间 (分钟)")
-                        Spacer()
-                        TextField("", value: $seedTime, format: .number)
-                            .textFieldStyle(.plain)
-                            .padding(6)
-                            .frame(width: 80)
-                            .background {
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(Color(nsColor: .controlBackgroundColor))
-                                RoundedRectangle(cornerRadius: 6)
-                                    .stroke(Color.primary.opacity(0.1), lineWidth: 1)
-                            }
-                    }
+                    .textSelection(.disabled)
                 }
             } header: {
-                Text("BT 设置")
+                Text("BT 设置".localized(for: language))
             }
 
             Section {
-                Toggle("自动重命名已存在文件", isOn: $autoRename)
-                Toggle("下载完成时通知", isOn: $notifyOnComplete)
+                Toggle("自动重命名已存在文件".localized(for: language), isOn: $autoRename)
+                Toggle("下载完成时通知".localized(for: language), isOn: $notifyOnComplete)
             } header: {
-                Text("常规行为")
+                Text("常规行为".localized(for: language))
             }
         }
         .formStyle(.grouped)
@@ -396,6 +432,7 @@ struct DownloadsPreferencesTab: View {
             Task { await DownloadManager.shared.applyGlobalOptions() }
         }
     }
+
 
     private func saveConnections() {
         print("PreferencesView: Saving defaultConnections = \(defaultConnections)")
@@ -407,7 +444,7 @@ struct DownloadsPreferencesTab: View {
         }
     }
 
-    private func selectDirectory() {
+    func selectDirectory() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
@@ -437,30 +474,33 @@ struct NetworkPreferencesTab: View {
     @AppStorage("handleMagnetLinks") private var handleMagnetLinks = true
     @AppStorage("handleThunderLinks") private var handleThunderLinks = false
 
+    @AppStorage("language") private var language = "zh-CN" // Added for localization
+
     var body: some View {
         Form {
             Section {
-                Toggle("磁力链接 [ magnet:// ]", isOn: $handleMagnetLinks)
+                Toggle("磁力链接 [ magnet:// ]".localized(for: language), isOn: $handleMagnetLinks)
                     .onChange(of: handleMagnetLinks) { _, newValue in
                         updateProtocolHandler(scheme: "magnet", enabled: newValue)
                     }
-                Toggle("迅雷链接 [ thunder:// ]", isOn: $handleThunderLinks)
+                Toggle("迅雷链接 [ thunder:// ]".localized(for: language), isOn: $handleThunderLinks)
                     .onChange(of: handleThunderLinks) { _, newValue in
                         updateProtocolHandler(scheme: "thunder", enabled: newValue)
                     }
+                .textSelection(.disabled)
             } header: {
-                Text("下载协议: 设置为以下协议的默认客户端")
+                Text("下载协议: 设置为以下协议的默认客户端".localized(for: language))
             }
 
             Section {
-                Toggle("启用代理", isOn: $proxyEnabled)
+                Toggle("启用代理".localized(for: language), isOn: $proxyEnabled)
 
                 if proxyEnabled {
                     Group {
-                        TextField("主机", text: $proxyHost)
-                        TextField("端口", text: $proxyPort)
-                        TextField("用户名 （可选）", text: $proxyUsername)
-                        SecureField("密码 （可选）", text: $proxyPassword)
+                        TextField("主机".localized(for: language), text: $proxyHost)
+                        TextField("端口".localized(for: language), text: $proxyPort)
+                        TextField("用户名 （可选）".localized(for: language), text: $proxyUsername)
+                        SecureField("密码 （可选）".localized(for: language), text: $proxyPassword)
                     }
                     .textFieldStyle(.plain)
                     .padding(6)
@@ -470,25 +510,26 @@ struct NetworkPreferencesTab: View {
                         RoundedRectangle(cornerRadius: 6)
                             .stroke(Color.primary.opacity(0.1), lineWidth: 1)
                     }
+                    .textSelection(.disabled)
                 }
             } header: {
-                Text("代理")
+                Text("代理".localized(for: language))
             }
 
             Section {
                 InfoToggle(
-                    title: "启用 IPv6",
-                    info: "如果您的网络环境不支持 IPv6，启用此选项可能导致连接超时。",
+                    title: "启用 IPv6".localized(for: language),
+                    info: "如果您的网络环境不支持 IPv6，启用此选项可能导致连接超时。".localized(for: language),
                     isOn: $enableIPv6
                 )
                 
                 InfoToggle(
-                    title: "启用异步 DNS",
-                    info: "启用 aria2 内置的异步 DNS 解析。如果您使用了代理软件，建议关闭此选项以防止 DNS 污染。",
+                    title: "启用异步 DNS".localized(for: language),
+                    info: "启用 aria2 内置的异步 DNS 解析。如果您使用了代理软件，建议关闭此选项以防止 DNS 污染。".localized(for: language),
                     isOn: $enableAsyncDNS
                 )
             } header: {
-                Text("高级网络")
+                Text("高级网络".localized(for: language))
             }
         }
         .formStyle(.grouped)
@@ -556,6 +597,7 @@ struct AdvancedPreferencesTab: View {
     // Log Level Persistence
     @AppStorage("LogLevel") private var logLevelRaw: Int = 1
 
+    @AppStorage("language") private var language = "zh-CN" // Added for localization
 
     // Fetching state
     @State private var isFetchingTrackers = false
@@ -574,11 +616,12 @@ struct AdvancedPreferencesTab: View {
                             ),
                             customURLs: $customTrackerURLs,
                             isFetching: isFetchingTrackers,
-                            fetchAction: { Task { await fetchTrackers() } }
+                            fetchAction: { Task { await fetchTrackers() } },
+                            language: language // Pass language
                         )
                     }
                     
-                    Toggle("自动同步 Tracker 服务器列表", isOn: $autoSyncTracker)
+                    Toggle("自动同步 Tracker 服务器列表".localized(for: language), isOn: $autoSyncTracker)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .onChange(of: autoSyncTracker) { _, newValue in
@@ -591,18 +634,18 @@ struct AdvancedPreferencesTab: View {
                             }
                         }
                     
-                    Picker("更新频率", selection: $updateInterval) {
-                        Text("每 12 小时").tag("12h")
-                        Text("每天").tag("daily")
-                        Text("每周").tag("weekly")
-                        Text("每月").tag("monthly")
+                    Picker("更新频率".localized(for: language), selection: $updateInterval) {
+                        Text("每 12 小时".localized(for: language)).tag("12h")
+                        Text("每天".localized(for: language)).tag("daily")
+                        Text("每周".localized(for: language)).tag("weekly")
+                        Text("每月".localized(for: language)).tag("monthly")
                     }
                     .disabled(!autoSyncTracker)
                     .foregroundStyle(autoSyncTracker ? .primary : .secondary)
                 }
                 .padding(.vertical, 4)
             } header: {
-                Text("Tracker 服务器 (订阅)")
+                Text("Tracker 服务器 (订阅)".localized(for: language))
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             
@@ -614,13 +657,13 @@ struct AdvancedPreferencesTab: View {
                     .background(Color(nsColor: .controlBackgroundColor))
                     .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.primary.opacity(0.1), lineWidth: 1))
             } header: {
-                Text("当前 Tracker 列表 (手动编辑)")
+                Text("当前 Tracker 列表 (手动编辑)".localized(for: language))
             }
 
             // RPC Settings
             Section {
                 HStack {
-                    Text("RPC 监听端口")
+                    Text("RPC 监听端口".localized(for: language))
                         .frame(width: 100, alignment: .leading)
                     
                     TextField("", value: $rpcPort, format: .number.grouping(.never))
@@ -635,7 +678,7 @@ struct AdvancedPreferencesTab: View {
                 }
                 
                 HStack {
-                    Text("RPC 授权密钥")
+                    Text("RPC 授权密钥".localized(for: language))
                         .frame(width: 100, alignment: .leading)
                     
                     HStack(spacing: 8) {
@@ -656,7 +699,7 @@ struct AdvancedPreferencesTab: View {
                                 .foregroundStyle(.secondary)
                         }
                         .buttonStyle(.plain)
-                        .help(showSecret ? "隐藏" : "显示")
+                        .help(showSecret ? "隐藏".localized(for: language) : "显示".localized(for: language))
                         
                         Button {
                             // Copy to clipboard
@@ -668,7 +711,7 @@ struct AdvancedPreferencesTab: View {
                                 .foregroundStyle(.secondary)
                         }
                         .buttonStyle(.plain)
-                        .help("复制")
+                        .help("复制".localized(for: language))
                         
                         Button {
                             rpcSecret = generateRandomSecret()
@@ -677,7 +720,7 @@ struct AdvancedPreferencesTab: View {
                                 .foregroundStyle(.secondary)
                         }
                         .buttonStyle(.plain)
-                        .help("随机生成")
+                        .help("随机生成".localized(for: language))
                     }
                     .padding(6)
                     .background {
@@ -688,7 +731,7 @@ struct AdvancedPreferencesTab: View {
                     }
                 }
 
-                Text("修改 RPC 设置后将自动热重启引擎生效")
+                Text("修改 RPC 设置后将自动热重启引擎生效".localized(for: language))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -699,15 +742,15 @@ struct AdvancedPreferencesTab: View {
                             .foregroundStyle(.red)
                         
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("RPC 错误：\(rpcError == "Unauthorized" ? "授权失败 （密钥不匹配）" : rpcError)")
+                            Text("RPC 错误：\(rpcError == "Unauthorized" ? "授权失败 （密钥不匹配）".localized(for: language) : rpcError)")
                                 .fontWeight(.medium)
-                            Text("当前系统可能存在一个旧的 aria2 进程正在使用此端口，且其密钥与当前设置不符。")
+                            Text("当前系统可能存在一个旧的 aria2 进程正在使用此端口，且其密钥与当前设置不符。".localized(for: language))
                                 .font(.caption2)
                         }
                         
                         Spacer()
                         
-                        Button("强制重置引擎") {
+                        Button("强制重置引擎".localized(for: language)) {
                             resetEngine()
                         }
                         .buttonStyle(.bordered)
@@ -727,7 +770,7 @@ struct AdvancedPreferencesTab: View {
                             .foregroundStyle(.red)
                         
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("引擎启动失败")
+                            Text("引擎启动失败".localized(for: language))
                                 .fontWeight(.medium)
                             Text(engineError)
                                 .font(.caption2)
@@ -735,7 +778,7 @@ struct AdvancedPreferencesTab: View {
                         
                         Spacer()
                         
-                        Button("重试") {
+                        Button("重试".localized(for: language)) {
                             resetEngine()
                         }
                         .buttonStyle(.bordered)
@@ -743,48 +786,49 @@ struct AdvancedPreferencesTab: View {
                     .padding(10)
                     .background(Color.red.opacity(0.1))
                     .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .textSelection(.disabled)
                 }
             } header: {
-                Text("RPC")
+                Text("RPC".localized(for: language))
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             // Privacy & BitTorrent Settings
             Section {
                 InfoToggle(
-                    title: "启用 DHT (去中心化网络)",
-                    info: "启用 Distributed Hash Table 以找到更多用户 (Peers)",
+                    title: "启用 DHT (去中心化网络)".localized(for: language),
+                    info: "启用 Distributed Hash Table 以找到更多用户 (Peers)".localized(for: language),
                     isOn: $enableDht
                 )
                 
                 InfoToggle(
-                    title: "启用用户交换 (PeX)",
-                    info: "启用 Peer Exchange 以找到更多用户 (Peers)",
+                    title: "启用用户交换 (PeX)".localized(for: language),
+                    info: "启用 Peer Exchange 以找到更多用户 (Peers)".localized(for: language),
                     isOn: $enablePex
                 )
                 
                 InfoToggle(
-                    title: "启用本地用户发现 (LPD)",
-                    info: "启用 Local Peer Discovery 以找到更多用户 (Peers)",
+                    title: "启用本地用户发现 (LPD)".localized(for: language),
+                    info: "启用 Local Peer Discovery 以找到更多用户 (Peers)".localized(for: language),
                     isOn: $enableLpd
                 )
                 
-                Picker("加密模式", selection: $btEncryptionMode) {
-                    Text("允许加密").tag(0)
-                    Text("强制加密").tag(1)
-                    Text("禁用加密").tag(2)
+                Picker("加密模式".localized(for: language), selection: $btEncryptionMode) {
+                    Text("允许加密".localized(for: language)).tag(0)
+                    Text("强制加密".localized(for: language)).tag(1)
+                    Text("禁用加密".localized(for: language)).tag(2)
                 }
                 .pickerStyle(.menu)
 
                 HStack {
-                    Text("启用 UPnP/NAT-PMP")
+                    Text("启用 UPnP/NAT-PMP".localized(for: language))
                     Spacer()
                     Toggle("", isOn: $enableUpnp)
                         .labelsHidden()
                 }
 
                 HStack {
-                    Text("BT 监听端口")
+                    Text("BT 监听端口".localized(for: language))
                         .frame(width: 100, alignment: .leading)
                     
                     TextField("", value: $btPort, format: .number.grouping(.never))
@@ -797,23 +841,24 @@ struct AdvancedPreferencesTab: View {
                                 .stroke(Color.primary.opacity(0.1), lineWidth: 1)
                         }
                 }
+                .textSelection(.disabled)
             } header: {
-                Text("隐私 & BitTorrent")
+                Text("隐私 & BitTorrent".localized(for: language))
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             // HTTP Settings
             Section {
-                TextField("User-Agent", text: $userAgent)
+                TextField("User-Agent".localized(for: language), text: $userAgent)
                     .textFieldStyle(.roundedBorder)
             } header: {
-                Text("HTTP")
+                Text("HTTP".localized(for: language))
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             
             // Log Settings
             Section {
-                 Picker("日志级别", selection: Binding(
+                 Picker("日志级别".localized(for: language), selection: Binding(
                     get: { LogLevel(rawValue: logLevelRaw) ?? .info },
                     set: { logLevelRaw = $0.rawValue }
                 )) {
@@ -822,42 +867,44 @@ struct AdvancedPreferencesTab: View {
                     }
                 }
                 .pickerStyle(.menu)
-                .help("设置应用程序日志的详细程度")
+                .help("设置应用程序日志的详细程度".localized(for: language))
                 .onChange(of: logLevelRaw) { _, newValue in
                     Logger.shared.level = LogLevel(rawValue: newValue) ?? .info
                 }
                 
-                Button("打开日志目录") {
+                Button("打开日志目录".localized(for: language)) {
                     openLogDirectory()
                 }
+                .textSelection(.disabled)
             } header: {
-                Text("日志")
+                Text("日志".localized(for: language))
             }
 
             // Reset
             Section {
                 HStack {
-                    Button("重置所有设置") {
+                    Button("重置所有设置".localized(for: language)) {
                         restoreInitialSettings()
                     }
                     .foregroundStyle(.red)
                     
                     Spacer()
                     
-                    Button("清除下载历史") {
+                    Button("清除下载历史".localized(for: language)) {
                         Task { await downloadManager.clearAllStopped() }
                     }
                 }
+                .textSelection(.disabled)
             } header: {
-                Text("常规重置")
+                Text("常规重置".localized(for: language))
             }
 
             // Developer Section
             Section {
                 VStack(alignment: .leading, spacing: 12) {
-                    PathRow(label: "内置的 aria2.conf 路径", path: aria2ConfPath)
-                    PathRow(label: "下载会话路径", path: sessionPath)
-                    PathRow(label: "应用日志路径", path: logFilePath)
+                    PathRow(label: "内置的 aria2.conf 路径".localized(for: language), path: aria2ConfPath, language: language)
+                    PathRow(label: "下载会话路径".localized(for: language), path: sessionPath, language: language)
+                    PathRow(label: "应用日志路径".localized(for: language), path: logFilePath, language: language)
                 }
                 .padding(.vertical, 4)
                 
@@ -865,7 +912,7 @@ struct AdvancedPreferencesTab: View {
                     Button {
                         resetSession()
                     } label: {
-                        Text("重置下载会话记录")
+                        Text("重置下载会话记录".localized(for: language))
                             .font(.system(size: 13, weight: .medium))
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
@@ -877,7 +924,7 @@ struct AdvancedPreferencesTab: View {
                     Button {
                         restoreInitialSettings()
                     } label: {
-                        Text("恢复初始设置")
+                        Text("恢复初始设置".localized(for: language))
                             .font(.system(size: 13, weight: .medium))
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
@@ -888,7 +935,7 @@ struct AdvancedPreferencesTab: View {
                 }
                 .padding(.top, 4)
             } header: {
-                Text("开发者")
+                Text("开发者".localized(for: language))
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
@@ -1098,10 +1145,10 @@ struct AdvancedPreferencesTab: View {
     
     private func restoreInitialSettings() {
         let alert = NSAlert()
-        alert.messageText = "恢复初始设置"
-        alert.informativeText = "此操作将重置所有偏好设置，但不会删除您的下载文件。确定要继续吗？"
-        alert.addButton(withTitle: "恢复")
-        alert.addButton(withTitle: "取消")
+        alert.messageText = "恢复初始设置".localized(for: language)
+        alert.informativeText = "此操作将重置所有偏好设置，但不会删除您的下载文件。确定要继续吗？".localized(for: language)
+        alert.addButton(withTitle: "恢复".localized(for: language))
+        alert.addButton(withTitle: "取消".localized(for: language))
         alert.alertStyle = .warning
         
         if alert.runModal() == .alertFirstButtonReturn {
@@ -1128,6 +1175,7 @@ struct TrackerSourceSelector: View {
     @Binding var customURLs: String
     let isFetching: Bool
     let fetchAction: () -> Void
+    let language: String // Added for localization
     
     @State private var isPopoverPresented = false
     @State private var isHovering = false
@@ -1141,7 +1189,7 @@ struct TrackerSourceSelector: View {
             } label: {
                 HStack {
                     if selection.isEmpty {
-                        Text("选择内置 Tracker 源...")
+                        Text("选择内置 Tracker 源...".localized(for: language))
                             .font(.system(size: 13))
                             .foregroundStyle(.secondary)
                     } else {
@@ -1175,13 +1223,14 @@ struct TrackerSourceSelector: View {
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
                         .stroke(Color.primary.opacity(0.1), lineWidth: 1)
                 }
+                .textSelection(.disabled)
             }
             .buttonStyle(.plain)
             .onHover { isHovering = $0 }
             .popover(isPresented: $isPopoverPresented, arrowEdge: .bottom) {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack {
-                        Text("选择来源")
+                        Text("选择来源".localized(for: language))
                             .font(.system(size: 13, weight: .bold))
                             .foregroundStyle(.primary.opacity(0.8))
                         
@@ -1197,7 +1246,7 @@ struct TrackerSourceSelector: View {
                                 .background(Color.primary.opacity(0.06), in: Circle())
                         }
                         .buttonStyle(.plain)
-                        .help("添加自定义订阅 URL")
+                        .help("添加自定义订阅 URL".localized(for: language))
                     }
                     .padding(.horizontal, 12)
                     .padding(.top, 12)
@@ -1216,7 +1265,7 @@ struct TrackerSourceSelector: View {
                             let customList = customURLs.components(separatedBy: .newlines).filter { !$0.isEmpty }
                             if !customList.isEmpty {
                                 Divider().padding(.vertical, 4)
-                                Text("自定义订阅")
+                                Text("自定义订阅".localized(for: language))
                                     .font(.system(size: 10, weight: .medium))
                                     .foregroundStyle(.tertiary)
                                     .padding(.horizontal, 12)
@@ -1254,7 +1303,7 @@ struct TrackerSourceSelector: View {
                                 }
                             }
                         } label: {
-                            Text(isAllSelected ? "清空已选" : "全选")
+                            Text(isAllSelected ? "清空已选".localized(for: language) : "全选".localized(for: language))
                                 .font(.system(size: 13, weight: .medium))
                                 .frame(width: 80, height: 28)
                                 .background(Color.gray.opacity(0.15), in: Capsule())
@@ -1267,7 +1316,7 @@ struct TrackerSourceSelector: View {
                         Button {
                             isPopoverPresented = false
                         } label: {
-                            Text("确定")
+                            Text("确定".localized(for: language))
                                 .font(.system(size: 13, weight: .semibold))
                                 .frame(width: 80, height: 28)
                                 .background(Color.accentColor, in: Capsule())
@@ -1283,10 +1332,10 @@ struct TrackerSourceSelector: View {
             }
             .sheet(isPresented: $showingAddURLAlert) {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("添加自定义订阅 URL")
+                    Text("添加自定义订阅 URL".localized(for: language))
                         .font(.headline)
                     
-                    Text("请输入一个包含 Tracker 列表的完整 URL 地址。")
+                    Text("请输入一个包含 Tracker 列表的完整 URL 地址。".localized(for: language))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                     
@@ -1303,13 +1352,13 @@ struct TrackerSourceSelector: View {
                     
                     HStack {
                         Spacer()
-                        Button("取消") {
+                        Button("取消".localized(for: language)) {
                             showingAddURLAlert = false
                             newURLString = ""
                         }
                         .buttonStyle(.bordered)
                         
-                        Button("添加") {
+                        Button("添加".localized(for: language)) {
                             if !newURLString.isEmpty {
                                 var current = customURLs.components(separatedBy: .newlines).filter { !$0.isEmpty }
                                 if !current.contains(newURLString) {
@@ -1342,7 +1391,7 @@ struct TrackerSourceSelector: View {
             }
             .buttonStyle(.plain)
             .disabled(isFetching)
-            .help("立即同步 Tracker 列表")
+            .help("立即同步 Tracker 列表".localized(for: language))
         }
     }
     
@@ -1427,6 +1476,7 @@ struct TrackerSourceSelector: View {
 struct PathRow: View {
     let label: String
     let path: String
+    let language: String
     
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -1456,7 +1506,7 @@ struct PathRow: View {
                         .font(.system(size: 11))
                 }
                 .buttonStyle(.bordered)
-                .help("复制路径")
+                .help("复制路径".localized(for: language))
                 
                 Button {
                     let url = URL(fileURLWithPath: path).deletingLastPathComponent()
@@ -1466,7 +1516,7 @@ struct PathRow: View {
                         .font(.system(size: 11))
                 }
                 .buttonStyle(.bordered)
-                .help("在 Finder 中显示")
+                .help("在 Finder 中显示".localized(for: language))
             }
         }
     }
@@ -1504,6 +1554,7 @@ struct InfoToggle: View {
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
                 }
+                .textSelection(.disabled)
             }
         }
     }
