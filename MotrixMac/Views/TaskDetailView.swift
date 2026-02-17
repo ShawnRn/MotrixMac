@@ -24,7 +24,7 @@ struct TaskDetailView: View {
             if task.isTorrent {
                 // Custom sliding tab picker
                 SlidingTabPicker(selection: $selectedTab, tabs: DetailTab.allCases) { tab in
-                    tab.title.localized(for: language)
+                    tab.title(for: language)
                 }
                 .padding(.horizontal, 24)
                 .padding(.vertical, 16)
@@ -92,7 +92,7 @@ struct TaskDetailHeader: View {
                     
                     Spacer(minLength: 0)
                     
-                    StatusBadge(status: task.status, displayStatus: task.displayStatus)
+                    StatusBadge(status: task.status, displayStatus: task.displayStatus(for: language))
                 }
 
                 // Stats Grid - More stable than HStack
@@ -114,7 +114,7 @@ struct TaskDetailHeader: View {
                     
                     if task.isActive {
                         GridRow {
-                            InfoLabel(icon: "clock", text: task.eta)
+                            InfoLabel(icon: "clock", text: task.eta(for: language))
                             
                             InfoLabel(
                                 icon: "arrow.up",
@@ -186,12 +186,12 @@ enum DetailTab: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    var title: String {
+    func title(for language: String) -> String {
         switch self {
-        case .general: return "常规"
-        case .files: return "文件"
-        case .peers: return "用户"
-        case .trackers: return "Tracker"
+        case .general: return "常规".localized(for: language)
+        case .files: return "文件".localized(for: language)
+        case .peers: return "用户".localized(for: language)
+        case .trackers: return "Tracker".localized(for: language)
         }
     }
 }
@@ -247,11 +247,6 @@ struct SlidingTabPicker<Tab: Hashable & Identifiable>: View {
     }
 }
 
-extension SlidingTabPicker where Tab == DetailTab {
-    init(selection: Binding<DetailTab>, tabs: [DetailTab]) {
-        self.init(selection: selection, tabs: tabs) { $0.title }
-    }
-}
 
 // MARK: - General Tab
 
@@ -265,7 +260,7 @@ struct GeneralTabView: View {
                 if !task.downloadSpeedHistory.isEmpty, (task.downloadSpeedHistory.max() ?? 0) > 0 {
                     DetailSection(title: "速度走势".localized(for: language)) {
                         if let maxSpeed = task.downloadSpeedHistory.max(), maxSpeed > 0 {
-                            Label("峰值: ".localized(for: language) + "\(maxSpeed.formatted(.byteCount(style: .file)))/s", systemImage: "bolt.fill")
+                            Label("峰值".localized(for: language) + ": " + "\(maxSpeed.formatted(.byteCount(style: .file)))/s", systemImage: "bolt.fill")
                                 .font(.system(size: 9, weight: .bold, design: .monospaced))
                                 .foregroundStyle(Color.accentColor)
                                 .padding(.horizontal, 8)
@@ -397,6 +392,7 @@ struct DetailRow: View {
 struct SpeedChartView: View {
     let history: [Int64]
     var isComplete: Bool = false
+    @AppStorage("language") private var language = "zh-CN"
     
     // Smooth the data using a moving average to reduce jaggedness
     private var smoothedHistory: [Int64] {
@@ -452,15 +448,15 @@ struct SpeedChartView: View {
         // Use smoothed data for the visual curve, but keep original data for tooltips
         ForEach(Array(smoothedHistory.enumerated()), id: \.offset) { index, speed in
             LineMark(
-                x: .value("Time", index),
-                y: .value("Speed", Double(speed))
+                x: .value("时间".localized(for: language), index),
+                y: .value("速度".localized(for: language), Double(speed))
             )
             .foregroundStyle(Color.accentColor)
             .interpolationMethod(.catmullRom)
 
             AreaMark(
-                x: .value("Time", index),
-                y: .value("Speed", Double(speed))
+                x: .value("时间".localized(for: language), index),
+                y: .value("速度".localized(for: language), Double(speed))
             )
             .foregroundStyle(
                 LinearGradient(
@@ -475,7 +471,7 @@ struct SpeedChartView: View {
     
     @ChartContentBuilder
     private func interactionContent(for index: Int) -> some ChartContent {
-        RuleMark(x: .value("Time", index))
+        RuleMark(x: .value("时间".localized(for: language), index))
             .foregroundStyle(Color.secondary.opacity(0.5))
             .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
             .annotation(position: .top, overflowResolution: .init(x: .fit, y: .disabled)) {
@@ -589,7 +585,7 @@ struct SpeedChartView: View {
         let total = history.count
         let secondsAgo = total - 1 - index
         if secondsAgo <= 0 {
-            return isComplete ? "完成".localized(for: "zh-CN") : "现在".localized(for: "zh-CN") // Placeholder
+            return isComplete ? "完成".localized(for: language) : "现在".localized(for: language)
         }
         return "-\(secondsAgo)s"
     }
@@ -817,7 +813,7 @@ struct PeerDetailPopover: View {
                         Circle()
                             .fill(statusColor(for: peer))
                             .frame(width: 8, height: 8)
-                        Text(peer.connectionStatus)
+                        Text(peer.connectionStatus(for: language))
                             .foregroundStyle(statusColor(for: peer))
                     }
                 }

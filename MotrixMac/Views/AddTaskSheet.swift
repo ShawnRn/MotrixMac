@@ -585,7 +585,7 @@ struct AddTorrentSheet: View {
                             // Thread count
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack {
-                                    Text("线程数")
+                                    Text("线程数".localized(for: language))
                                     Spacer()
                                     Text("\(defaultConnections)")
                                         .foregroundStyle(.secondary)
@@ -602,7 +602,7 @@ struct AddTorrentSheet: View {
                             
                             // User-Agent
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("User-Agent")
+                                Text("用户代理".localized(for: language))
                                     .font(.subheadline)
                                 TextField("留空使用默认值".localized(for: language), text: $customUserAgent)
                                     .textFieldStyle(.plain)
@@ -612,7 +612,7 @@ struct AddTorrentSheet: View {
                             
                             // Referer
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("Referer")
+                                Text("来源".localized(for: language))
                                     .font(.subheadline)
                                 TextField("留空使用默认值".localized(for: language), text: $customReferer)
                                     .textFieldStyle(.plain)
@@ -622,7 +622,7 @@ struct AddTorrentSheet: View {
                             
                             // Cookie
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("Cookie")
+                                Text("Cookie".localized(for: language))
                                     .font(.subheadline)
                                 TextField("留空使用默认值".localized(for: language), text: $customCookie)
                                     .textFieldStyle(.plain)
@@ -658,7 +658,7 @@ struct AddTorrentSheet: View {
                 Button {
                     dismiss()
                 } label: {
-                    Text("取消")
+                    Text("取消".localized(for: language))
                         .font(.system(size: 13, weight: .medium))
                         .frame(width: 80, height: 28)
                         .background(Color.gray.opacity(0.15), in: Capsule())

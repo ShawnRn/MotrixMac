@@ -49,7 +49,7 @@ struct TaskListView: View {
                 sortOrder: $manager.sortOrder,
                 onDeleteAll: {
                     deleteSheetConfig = DeleteSheetConfig(
-                        displayName: "删除所有任务",
+                        displayName: "删除所有任务".localized(for: language),
                         isDeleteAll: true,
                         deleteFiles: downloadManager.deleteWithFilesDefault
                     )
@@ -771,6 +771,7 @@ struct TaskItemButtonStyle: ButtonStyle {
 
 struct EngineRepairOverlay: View {
     @Environment(DownloadManager.self) private var downloadManager
+    @AppStorage("language") private var language = "zh-CN"
     @State private var isRepairing = false
 
     var body: some View {
@@ -780,10 +781,10 @@ struct EngineRepairOverlay: View {
                 .foregroundStyle(.orange)
 
             VStack(spacing: 8) {
-                Text("引擎连接失败")
+                Text("引擎连接失败".localized(for: language))
                     .font(.headline)
                 
-                Text(downloadManager.connectionError ?? "可能由于残留进程或密钥不一致导致。建议尝试强行重置。")
+                Text(downloadManager.connectionError ?? "可能由于残留进程或密钥不一致导致。建议尝试强行重置。".localized(for: language))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -807,7 +808,7 @@ struct EngineRepairOverlay: View {
                     if isRepairing {
                         ProgressView().controlSize(.small)
                     } else {
-                        Text("强行重置并修复")
+                        Text("强行重置并修复".localized(for: language))
                     }
                 }
                 .buttonStyle(.borderedProminent)
@@ -849,7 +850,7 @@ struct TaskListHeader: View {
                             .font(.title2)
                             .fontWeight(.semibold)
                     } else {
-                        Text(category.title.localized(for: language))
+                        Text(category.title(for: language))
                             .font(.title2)
                             .fontWeight(.semibold)
                     }
@@ -1044,6 +1045,7 @@ extension Array where Element == DownloadTask {
 // MARK: - Engine Heal Overlay (Passive status)
 
 struct EngineHealOverlay: View {
+    @AppStorage("language") private var language = "zh-CN"
     let state: EngineProcess.EngineState
 
     var body: some View {
@@ -1062,7 +1064,7 @@ struct EngineHealOverlay: View {
                         .font(.headline)
                         .foregroundStyle(.primary)
                     
-                    Text("由于上次异常退出，正在尝试自愈系统以确保稳定。")
+                    Text("由于上次异常退出，正在尝试自愈系统以确保稳定。".localized(for: language))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)

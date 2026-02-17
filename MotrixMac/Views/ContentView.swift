@@ -336,14 +336,14 @@ struct ToolbarContent: View {
                 } label: {
                     Label("添加下载".localized(for: language), systemImage: "plus")
                 }
-                .help("Add new download (⌘N)")
+                .help("新建下载 (⌘N)".localized(for: language))
 
                 Button {
                     Task { await downloadManager.refreshTasks() }
                 } label: {
                     Label("刷新".localized(for: language), systemImage: "arrow.clockwise")
                 }
-                .help("Refresh task list")
+                .help("刷新任务列表".localized(for: language))
                 
                 if settingsAreDirty && downloadManager.currentCategory == .settings {
                     Button {
@@ -394,7 +394,7 @@ struct EmptyStateView: View {
                 .font(.system(size: 64))
                 .foregroundStyle(.tertiary)
 
-            Text("未选择任务".localized(for: language))
+            Text("未选择下载任务".localized(for: language))
                 .font(.title2)
                 .foregroundStyle(.secondary)
 

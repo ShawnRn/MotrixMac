@@ -97,12 +97,12 @@ struct MotrixCommands: Commands {
         }
 
         CommandGroup(replacing: .appSettings) {
-            Button("设置...".localized(for: language)) {
+            Button("设置".localized(for: language) + "...") {
                 NotificationCenter.default.post(name: .openSettings, object: nil)
             }
             .keyboardShortcut(",", modifiers: .command)
             
-            Button("检查更新...".localized(for: language)) {
+            Button("检查更新".localized(for: language) + "...") {
                 AppDelegate.shared?.updaterController.checkForUpdates(nil)
             }
         }

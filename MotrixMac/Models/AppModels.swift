@@ -242,8 +242,8 @@ struct DownloadTask: Identifiable, Equatable, Codable, Sendable {
         return FileType.from(filename: name)
     }
 
-    var eta: String {
-        if displayStatus == "Connecting..." { return "--" }
+    func eta(for language: String) -> String {
+        if displayStatus(for: language) == "Connecting...".localized(for: language) { return "--" }
         guard downloadSpeed > 0, totalLength > completedLength else { return "--" }
         let remaining = totalLength - completedLength
         let seconds = remaining / downloadSpeed
@@ -259,27 +259,27 @@ struct DownloadTask: Identifiable, Equatable, Codable, Sendable {
         }
     }
 
-    var displayStatus: String {
+    func displayStatus(for language: String) -> String {
         if status == "active" {
             if isSeeding {
-                return "做种中"
+                return "做种中".localized(for: language)
             }
             if totalLength == 0 && completedLength == 0 && connections == 0 {
-                return "Connecting..."
+                return "Connecting...".localized(for: language)
             }
             if downloadSpeed == 0 {
-                return "等待中"
+                return "等待中".localized(for: language)
             }
-            return "下载中"
+            return "下载中".localized(for: language)
         }
 
         switch status {
-        case "active": return "下载中"
-        case "waiting": return "等待中"
-        case "paused": return "已暂停"
-        case "complete": return "已完成"
-        case "error": return "出现错误"
-        case "removed": return "已取消"
+        case "active": return "下载中".localized(for: language)
+        case "waiting": return "等待中".localized(for: language)
+        case "paused": return "已暂停".localized(for: language)
+        case "complete": return "已完成".localized(for: language)
+        case "error": return "出现错误".localized(for: language)
+        case "removed": return "已取消".localized(for: language)
         default: return status.capitalized
         }
     }
@@ -314,17 +314,17 @@ struct TaskPeer: Equatable, Codable, Identifiable {
     }
     
     /// Connection status description
-    var connectionStatus: String {
+    func connectionStatus(for language: String) -> String {
         if seeder {
-            return "做种者"
+            return "做种者".localized(for: language)
         } else if amChoking && peerChoking {
-            return "阻塞中"
+            return "阻塞中".localized(for: language)
         } else if amChoking {
-            return "等待上传"
+            return "等待上传".localized(for: language)
         } else if peerChoking {
-            return "等待下载"
+            return "等待下载".localized(for: language)
         } else {
-            return "传输中"
+            return "传输中".localized(for: language)
         }
     }
 }
@@ -345,12 +345,12 @@ enum TaskCategory: String, Identifiable {
 
     var id: String { rawValue }
 
-    var title: String {
+    func title(for language: String) -> String {
         switch self {
-        case .downloading: return "进行中"
-        case .completed: return "已完成"
-        case .settings: return "设置"
-        case .about: return "关于 MotrixMac"
+        case .downloading: return "进行中".localized(for: language)
+        case .completed: return "已完成".localized(for: language)
+        case .settings: return "设置".localized(for: language)
+        case .about: return "关于 MotrixMac".localized(for: language)
         }
     }
 

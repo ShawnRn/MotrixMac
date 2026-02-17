@@ -38,6 +38,15 @@ struct AboutView: View {
     ]
     @State private var changelogs: [ChangelogItem] = [
         ChangelogItem(
+            version: "1.1.9",
+            date: "2026-02-17",
+            changes: [
+                "更新了图标。",
+                "进一步完善了多语言本地化。",
+                "优化了 UI 细节。"
+            ]
+        ),
+        ChangelogItem(
             version: "1.1.8",
             date: "2026-02-16",
             changes: [
@@ -226,7 +235,9 @@ struct AboutView: View {
                         Text("MotrixMac")
                             .font(.system(size: 24, weight: .semibold))
                             
-                        Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1.6") (\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "2026021300"))")
+                        Text(String(format: "版本 %1$@ (%2$@)".localized(for: language), 
+                            Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1.6",
+                            Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "2026021300"))
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             
@@ -281,7 +292,7 @@ struct AboutView: View {
             
             // Footer
             VStack(spacing: 6) {
-                Text("Made with ❤️ by Shawn Rain")
+                Text("Made with ❤️ by Shawn Rain".localized(for: language))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 
@@ -305,7 +316,7 @@ struct AboutView: View {
                 }
                 .padding(.bottom, 2)
                 
-                Text("MIT Copyright (c) 2026-present Shawn Rain")
+                Text("MIT Copyright (c) 2026-present Shawn Rain".localized(for: language))
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
             }

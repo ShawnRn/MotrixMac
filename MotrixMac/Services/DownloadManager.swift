@@ -61,6 +61,11 @@ final class DownloadManager {
         }
     }
 
+    // Localization context
+    private var language: String {
+        UserDefaults.standard.string(forKey: "language") ?? "zh-CN"
+    }
+
     // Computed properties
     var activeDownloads: [DownloadTask] {
         tasks.filter { ["active", "waiting", "paused"].contains($0.status) }
@@ -453,7 +458,7 @@ final class DownloadManager {
                            !self.notifiedStartedGIDs.contains(newTask.id) &&
                            (self.persistentTasks[newTask.id]?.status != "complete") {
                             self.notifiedStartedGIDs.insert(newTask.id)
-                            self.sendNotification(title: "开始下载", body: "\(newTask.name) 速度: \(newTask.downloadSpeed.formatted(.byteCount(style: .file)))/s")
+                            self.sendNotification(title: "开始下载".localized(for: language), body: "\(newTask.name) " + "速度".localized(for: language) + ": \(newTask.downloadSpeed.formatted(.byteCount(style: .file)))/s")
                         }
                         
                         // If this is the first time we see it active, prepend a 0 for a cleaner chart start
@@ -1363,7 +1368,7 @@ final class DownloadManager {
                         // Prevent duplicate start notifications
                         if !self.notifiedStartedGIDs.contains(gid) {
                             self.notifiedStartedGIDs.insert(gid)
-                            sendNotification(title: "开始下载", body: "\(task.name) 已开始下载")
+                            sendNotification(title: "开始下载".localized(for: language), body: "\(task.name) " + "已开始下载".localized(for: language))
                         }
                     }
                 }
@@ -1386,8 +1391,8 @@ final class DownloadManager {
                             return
                         }
                         
-                        let title = method == "aria2.onBtDownloadComplete" ? "BT 下载完成" : "下载完成"
-                        sendNotification(title: title, body: "\(task.name) 已下载完成")
+                        let title = method == "aria2.onBtDownloadComplete" ? "BT 下载完成".localized(for: language) : "下载完成".localized(for: language)
+                        sendNotification(title: title, body: "\(task.name) " + "已下载完成".localized(for: language))
                         self.notifiedCompletedGIDs.insert(gid)
                         
                         // [Critical Fix] Update persistent state and save session immediately
@@ -1412,9 +1417,9 @@ final class DownloadManager {
                              return
                         }
                         
-                        let errorMessage = task.errorMessage ?? "未知错误"
+                        let errorMessage = task.errorMessage ?? "未知错误".localized(for: language)
                         Logger.error("DownloadManager: Task \(task.name) (GID: \(gid)) failed: \(errorMessage)")
-                        sendNotification(title: "下载失败", body: "\(task.name) 下载失败: \(errorMessage)")
+                        sendNotification(title: "下载失败".localized(for: language), body: "\(task.name) " + "下载失败".localized(for: language) + ": " + errorMessage)
                     }
                 }
             }
@@ -1452,19 +1457,20 @@ final class DownloadManager {
         }
         
         // 2. Speed and ETA
-        task.formattedStatusText = task.displayStatus // Restore missing assignment
+        // displayStatus and eta are now methods, no longer pre-calculated as properties
         if task.isSeeding {
             // Seeding: Show upload speed instead of download
             let uploadSpeed = formatter.string(fromByteCount: task.uploadSpeed) + "/s"
             task.formattedDownloadSpeed = uploadSpeed
             task.formattedETA = "--"
-            task.formattedStatusLine = "\(task.formattedSizeText) · ↑ \(uploadSpeed) · 做种中"
+            task.formattedStatusLine = "\(task.formattedSizeText) · ↑ \(uploadSpeed)"
         } else if task.isActive {
+            let language = self.language
             task.formattedDownloadSpeed = formatter.string(fromByteCount: task.downloadSpeed) + "/s"
-            task.formattedETA = task.eta
+            task.formattedETA = task.eta(for: language)
             
             if task.totalLength > 0 {
-                task.formattedStatusLine = "\(task.formattedSizeText) · \(task.formattedDownloadSpeed) · 剩余时间: \(task.formattedETA)"
+                task.formattedStatusLine = "\(task.formattedSizeText) · \(task.formattedDownloadSpeed) · \(task.formattedETA)" // Removed hardcoded "剩余时间:"
             } else {
                 task.formattedStatusLine = "\(task.formattedSizeText) · \(task.formattedDownloadSpeed)"
             }

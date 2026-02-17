@@ -34,7 +34,7 @@ struct SidebarView: View {
                                 isHovered: hoveredCategory == category,
                                 count: downloadManager.taskCount(for: category),
                                 namespace: sidebarNamespace,
-                                customTitle: category == .downloading ? "主页".localized(for: language) : category.title.localized(for: language)
+                                customTitle: category == .downloading ? "主页".localized(for: language) : category.title(for: language)
                             ) {
                                 onSelect(category)
                             }
@@ -52,7 +52,7 @@ struct SidebarView: View {
                             isHovered: hoveredCategory == category,
                             count: downloadManager.taskCount(for: category),
                             namespace: sidebarNamespace,
-                            customTitle: category.title.localized(for: language)
+                            customTitle: category.title(for: language)
                         ) {
                             onSelect(category)
                         }
@@ -78,7 +78,7 @@ struct SidebarView: View {
                     count: 0,
 
                     namespace: sidebarNamespace,
-                    customTitle: TaskCategory.settings.title.localized(for: language)
+                    customTitle: TaskCategory.settings.title(for: language)
                 ) {
                     onSelect(.settings)
                 }
@@ -96,7 +96,7 @@ struct SidebarView: View {
                     count: 0,
 
                     namespace: sidebarNamespace,
-                    customTitle: TaskCategory.about.title.localized(for: language)
+                    customTitle: TaskCategory.about.title(for: language)
                 ) {
                     onSelect(.about)
                 }
@@ -141,6 +141,7 @@ struct LogoHeader: View {
 // MARK: - Sidebar Item
 
 struct SidebarItem: View {
+    @AppStorage("language") private var language = "zh-CN"
     @Environment(\.colorScheme) private var colorScheme
     let category: TaskCategory
     let isSelected: Bool
@@ -158,7 +159,7 @@ struct SidebarItem: View {
                     .frame(width: 20)
                     .foregroundStyle(isSelected ? .white : .primary)
 
-                Text(customTitle ?? category.title)
+                Text(customTitle ?? category.title(for: language))
                     .font(.system(size: 14, weight: .regular))
                     .foregroundStyle(isSelected ? .white : .primary)
                     .allowsHitTesting(false) // Fix cursor issue in sidebar

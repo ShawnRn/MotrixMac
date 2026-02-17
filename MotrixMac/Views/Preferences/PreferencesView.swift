@@ -196,11 +196,11 @@ struct GeneralPreferencesTab: View {
                 .textSelection(.disabled)
 
                 Picker("语言".localized(for: language), selection: $language) {
-                    Text("English").tag("en")
-                    Text("简体中文").tag("zh-CN")
-                    Text("繁體中文").tag("zh-TW")
-                    Text("日本語").tag("ja")
-                    Text("한국어").tag("ko")
+                    Text(verbatim: "English").tag("en")
+                    Text(verbatim: "简体中文").tag("zh-CN")
+                    Text(verbatim: "繁體中文").tag("zh-TW")
+                    Text(verbatim: "日本語").tag("ja")
+                    Text(verbatim: "한국어").tag("ko")
                 }
                 .textSelection(.disabled)
                 
@@ -326,8 +326,8 @@ struct DownloadsPreferencesTab: View {
                         }
                     
                     Picker("", selection: $uploadSpeedUnit) {
-                        Text("KB/s").tag("KB/s")
-                        Text("MB/s").tag("MB/s")
+                        Text("KB/s".localized(for: language)).tag("KB/s")
+                        Text("MB/s".localized(for: language)).tag("MB/s")
                     }
                     .pickerStyle(.menu)
                     .frame(width: 100)
@@ -348,8 +348,8 @@ struct DownloadsPreferencesTab: View {
                         }
                     
                     Picker("", selection: $downloadSpeedUnit) {
-                        Text("KB/s").tag("KB/s")
-                        Text("MB/s").tag("MB/s")
+                        Text("KB/s".localized(for: language)).tag("KB/s")
+                        Text("MB/s".localized(for: language)).tag("MB/s")
                     }
                     .pickerStyle(.menu)
                     .frame(width: 100)
@@ -1458,11 +1458,20 @@ struct TrackerSourceSelector: View {
     }
     
     private func displayName(for string: String) -> String {
-        guard isURL(string), let url = URL(string: string) else {
+        if isURL(string) {
+            if let url = URL(string: string) {
+                return url.lastPathComponent.isEmpty ? (url.host ?? string) : url.lastPathComponent
+            }
             return string
         }
-        // Return host or last path component for URLs to keep tags short
-        return url.lastPathComponent.isEmpty ? (url.host ?? string) : url.lastPathComponent
+        
+        switch string {
+        case "trackers_best.txt": return "精选列表 (Best)".localized(for: language)
+        case "trackers_best_ip.txt": return "精选列表 (Best IP)".localized(for: language)
+        case "trackers_all.txt": return "全量列表 (All)".localized(for: language)
+        case "trackers_all_ip.txt": return "全量列表 (All IP)".localized(for: language)
+        default: return string
+        }
     }
     
     private let availableTrackers = [

@@ -71,7 +71,7 @@ struct MenuBarView: View {
                         }
 
                         if downloadManager.activeDownloads.count > 5 {
-                            Text(String(format: "+ 还有 %d 个任务".localized(for: language), downloadManager.activeDownloads.count - 5))
+                            Text(String(format: "+ " + "还有 %d 个任务".localized(for: language), downloadManager.activeDownloads.count - 5))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -116,7 +116,7 @@ struct MenuBarView: View {
             Button {
                 NSApp.terminate(nil)
             } label: {
-                Text("退出 MotrixMac (⌘+Q)".localized(for: language))
+                Text("退出 MotrixMac (⌘Q)".localized(for: language))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)
