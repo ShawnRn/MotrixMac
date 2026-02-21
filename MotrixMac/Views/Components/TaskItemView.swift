@@ -111,7 +111,8 @@ struct TaskItemView: View {
                             }
                         }()
                         
-                        Text(statusText + (task.isFileMissing ? " · " + "已移除".localized(for: language) : ""))
+                        let suffix = task.isFileMissing ? " · " + "已移除".localized(for: language) : ""
+                        Text(statusText + suffix)
                             .font(.subheadline)
                             .foregroundStyle(task.isFileMissing ? .tertiary : .secondary)
                             .allowsHitTesting(false)

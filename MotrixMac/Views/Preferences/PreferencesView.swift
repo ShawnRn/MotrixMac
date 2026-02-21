@@ -241,7 +241,7 @@ struct DownloadsPreferencesTab: View {
     @AppStorage("defaultDownloadDirectory") private var downloadDirectory = FileManager.default
         .urls(for: .downloadsDirectory, in: .userDomainMask).first!.path
     @AppStorage("maxConcurrentDownloads") private var maxConcurrent = 5
-    @AppStorage("defaultConnections") private var defaultConnections = 16
+    @AppStorage("defaultConnections") private var defaultConnections = 64
     @AppStorage("autoRenameFiles") private var autoRename = true
     @AppStorage("notifyOnComplete") private var notifyOnComplete = true
     @AppStorage("autoJumpOnTaskCreated") private var autoJumpOnTaskCreated = true

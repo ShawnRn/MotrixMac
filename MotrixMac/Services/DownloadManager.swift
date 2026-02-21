@@ -1474,6 +1474,8 @@ final class DownloadManager {
             } else {
                 task.formattedStatusLine = "\(task.formattedSizeText) · \(task.formattedDownloadSpeed)"
             }
+        } else if task.status == "complete" {
+            task.formattedStatusLine = "\(task.formattedSizeText) · " + "已完成".localized(for: self.language)
         } else {
             task.formattedStatusLine = "\(task.formattedSizeText) · \(task.formattedStatusText)"
         }

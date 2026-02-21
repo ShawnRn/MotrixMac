@@ -405,18 +405,20 @@ listen-port=6881-6999
 disable-ipv6=\(!enableIPv6)
 all-proxy=\(allProxy)
 
-# 超时设置
-connect-timeout=30
-timeout=60
+# 超时设置 - 激进剔除慢连接以解决尾段长尾效应
+connect-timeout=5
+timeout=5
 max-tries=0
-retry-wait=10
+retry-wait=2
 
 # --- Downloads ---
 max-concurrent-downloads=\(maxConcurrent > 0 ? maxConcurrent : 5)
-split=\(defaultConnections > 0 ? defaultConnections : 16)
-max-connection-per-server=\(defaultConnections > 0 ? defaultConnections : 16)
-min-split-size=4M
+split=\(defaultConnections > 0 ? defaultConnections : 64)
+max-connection-per-server=\(defaultConnections > 0 ? defaultConnections : 64)
+min-split-size=1M
 piece-length=1M
+stream-piece-selector=geom
+optimize-concurrent-downloads=true
 max-download-limit=\(formatSpeedLimit(maxDownloadSpeed, unit: downloadSpeedUnit))
 max-upload-limit=\(formatSpeedLimit(maxUploadSpeed, unit: uploadSpeedUnit))
 
