@@ -1260,6 +1260,11 @@ final class DownloadManager {
     func removeTasks(gids: [String], deleteFiles: Bool) async {
         guard !gids.isEmpty, let service = aria2Service else { return }
         
+        // Pre-fetch tasks before they are removed from memory so we can delete their files later
+        let tasksToDelete = gids.compactMap { gid in
+            tasks.first { $0.id == gid } ?? persistentTasks[gid]
+        }
+        
         // 1. Mark as deleting and remove from UI
         self.deletingGIDs.formUnion(gids)
         self.tasks.removeAll { gids.contains($0.id) }
@@ -1285,12 +1290,8 @@ final class DownloadManager {
         
         // Handle file deletion if requested
         if deleteFiles {
-            for gid in gids {
-                // Find the task in memory to get its directory and name
-                // (Need to look in the original full list or persistent tasks before removal)
-                if let task = (tasks.first { $0.id == gid } ?? persistentTasks[gid]) {
-                    self.deleteFiles(for: task)
-                }
+            for task in tasksToDelete {
+                self.deleteFiles(for: task)
             }
         }
         
