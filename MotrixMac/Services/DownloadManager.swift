@@ -4,6 +4,12 @@ import Observation
 import UserNotifications
 import CryptoKit
 
+/// Represents a conflict when adding a new download task
+enum DuplicateConflict {
+    case taskExists(DownloadTask)
+    case fileExists(URL)
+}
+
 /// Central download manager using aria2 RPC
 @Observable @MainActor
 final class DownloadManager {
@@ -791,6 +797,64 @@ final class DownloadManager {
             }
             return false
         }.count
+    }
+
+    /// Pre-flight check for duplicate downloads (either in the task list or on disk)
+    func checkDuplicate(uri: String, dir: String, customFilename: String = "") -> DuplicateConflict? {
+        let finalUri = uri.hasPrefix("magnet:") ? cleanMagnetLink(uri) : uri
+        
+        // 1. Guess filename
+        var expectedName = customFilename
+        if expectedName.isEmpty {
+            if let url = URL(string: finalUri), !url.lastPathComponent.isEmpty && url.lastPathComponent != "/" {
+                expectedName = url.lastPathComponent
+            } else {
+                // If we can't guess, try to see if it matches any task by URI only
+                expectedName = ""
+            }
+        }
+        
+        // 2. Check task list by URI or guessed name
+        if let existingTask = tasks.first(where: { task in
+            (["active", "waiting", "paused"].contains(task.status)) &&
+            (task.uri == finalUri || (!expectedName.isEmpty && task.name == expectedName))
+        }) {
+            return .taskExists(existingTask)
+        }
+        
+        // 3. Check local filesystem if we have an expected name
+        if !expectedName.isEmpty {
+            let possiblePath = (dir as NSString).appendingPathComponent(expectedName)
+            if FileManager.default.fileExists(atPath: possiblePath) {
+                return .fileExists(URL(fileURLWithPath: possiblePath))
+            }
+        }
+        
+        return nil
+    }
+    
+    /// Suggests a unique filename (adds (1), (2) etc) that doesn't conflict with tasks or local files
+    func suggestUniqueFilename(originalName: String, dir: String) -> String {
+        let ext = (originalName as NSString).pathExtension
+        let base = (originalName as NSString).deletingPathExtension
+        
+        var name = originalName
+        var counter = 1
+        
+        while true {
+            let possiblePath = (dir as NSString).appendingPathComponent(name)
+            let fileExists = FileManager.default.fileExists(atPath: possiblePath)
+            
+            let taskExists = tasks.contains(where: { $0.name == name }) || 
+                             persistentTasks.values.contains(where: { $0.name == name })
+                             
+            if !fileExists && !taskExists {
+                return name
+            }
+            
+            name = ext.isEmpty ? "\(base) (\(counter))" : "\(base) (\(counter)).\(ext)"
+            counter += 1
+        }
     }
 
     func addDownload(uri: String, options: [String: Any]) async throws {

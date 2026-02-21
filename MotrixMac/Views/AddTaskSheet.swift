@@ -24,6 +24,11 @@ struct AddTaskSheet: View {
     @State private var customHeaders = ""
     @State private var isValidURL = true
     @State private var isProcessing = false
+    
+    // Duplicate flow state
+    @State private var showDuplicateAlert = false
+    @State private var duplicateConflictType: DuplicateConflict?
+    @State private var pendingOptions: [String: Any]?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -237,6 +242,47 @@ struct AddTaskSheet: View {
                 connections = storedDefaultConnections
             }
         }
+        .alert("任务或文件已存在".localized(for: language), isPresented: $showDuplicateAlert, presenting: duplicateConflictType) { conflict in
+            Button("重命名".localized(for: language)) {
+                let baseName: String
+                switch conflict {
+                case .taskExists(let t): baseName = t.name
+                case .fileExists(let u): baseName = u.lastPathComponent
+                }
+                
+                let dirPath = saveDirectory.path(percentEncoded: false)
+                let uniqueName = downloadManager.suggestUniqueFilename(originalName: baseName, dir: dirPath)
+                
+                var newOptions = pendingOptions ?? [:]
+                newOptions["out"] = uniqueName
+                
+                submitDownload(options: newOptions)
+            }
+            
+            Button("替换".localized(for: language), role: .destructive) {
+                isProcessing = true
+                Task {
+                    // Try to clean up existing task/file first
+                    if case .taskExists(let t) = conflict {
+                        await downloadManager.deleteTask(t, withFiles: true)
+                    } else if case .fileExists(let u) = conflict {
+                        try? FileManager.default.removeItem(at: u)
+                    }
+                    
+                    submitDownload(options: pendingOptions ?? [:])
+                }
+            }
+            
+            Button("取消".localized(for: language), role: .cancel) {
+                isProcessing = false
+            }
+        } message: { conflict in
+            if case .fileExists = conflict {
+                Text("该目录下已存在同名文件，直接增加可能会覆写或产生冲突。请选择如何操作：".localized(for: language))
+            } else {
+                Text("下载列表中已存在相同下载地址或同名任务。请选择如何操作：".localized(for: language))
+            }
+        }
     }
 
     private func validateURL(_ url: String) {
@@ -309,6 +355,19 @@ struct AddTaskSheet: View {
             options["header"] = headers
         }
 
+        // PRE-FLIGHT CHECK
+        if let conflict = downloadManager.checkDuplicate(uri: urlText, dir: saveDirectory.path(percentEncoded: false), customFilename: customFilename) {
+            self.duplicateConflictType = conflict
+            self.pendingOptions = options
+            self.showDuplicateAlert = true
+            return // wait for user choice
+        }
+
+        submitDownload(options: options)
+    }
+    
+    private func submitDownload(options: [String: Any]) {
+        self.isProcessing = true
         Task {
             do {
                 try await downloadManager.addDownload(uri: urlText, options: options)
@@ -364,6 +423,13 @@ struct AddTorrentSheet: View {
     }
     @State private var currentFilter: FileFilter = .all
     @State private var showNoFileSelectedAlert = false
+    @State private var isProcessing = false
+    
+    // Duplicate flow state
+    @State private var showDuplicateAlert = false
+    @State private var duplicateConflictType: DuplicateConflict?
+    @State private var pendingOptions: [String: Any]?
+    @State private var pendingBase64: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -708,11 +774,56 @@ struct AddTorrentSheet: View {
                 downloadManager.pendingTorrentURL = nil
             }
         }
-
         .alert("未选择文件".localized(for: language), isPresented: $showNoFileSelectedAlert) {
             Button("确定".localized(for: language), role: .cancel) { }
         } message: {
             Text("请至少选择一个文件以开始下载。".localized(for: language))
+        }
+        .alert("任务或文件已存在".localized(for: language), isPresented: $showDuplicateAlert, presenting: duplicateConflictType) { conflict in
+            Button("重命名".localized(for: language)) {
+                let baseName: String
+                switch conflict {
+                case .taskExists(let t): baseName = t.name
+                case .fileExists(let u): baseName = u.lastPathComponent
+                }
+                
+                let dirPath = saveDirectory.path(percentEncoded: false)
+                let uniqueName = downloadManager.suggestUniqueFilename(originalName: baseName, dir: dirPath)
+                
+                var newOptions = pendingOptions ?? [:]
+                newOptions["out"] = uniqueName
+                // If it's a multi-file torrent, we need to change the dir to avoid collision with the root folder name.
+                // However, our initial duplicate check is just the root folder name.
+                // For simplicity, aria2 handles the multi-file path but we can just use the uniqueName trick from the DownloadManager's addTorrent logic.
+                // Or better, let DownloadManager.addTorrent handle the unique renaming logic if we pass out/dir properly!
+                // Actually, the new logic inside addDownload/submitDownload handles it.
+                
+                submitTorrent(base64: pendingBase64 ?? "", options: newOptions, suggestedName: uniqueName)
+            }
+            
+            Button("替换".localized(for: language), role: .destructive) {
+                isProcessing = true
+                Task {
+                    // Try to clean up existing task/file first
+                    if case .taskExists(let t) = conflict {
+                        await downloadManager.deleteTask(t, withFiles: true)
+                    } else if case .fileExists(let u) = conflict {
+                        try? FileManager.default.removeItem(at: u)
+                    }
+                    
+                    submitTorrent(base64: pendingBase64 ?? "", options: pendingOptions ?? [:], suggestedName: nil)
+                }
+            }
+            
+            Button("取消".localized(for: language), role: .cancel) {
+                isProcessing = false
+            }
+        } message: { conflict in
+            if case .fileExists = conflict {
+                Text("该目录下已存在同名根文件夹或文件，直接增加可能会覆写或产生冲突。请选择如何操作：".localized(for: language))
+            } else {
+                Text("下载列表中已存在相同名称的种子任务。请选择如何操作：".localized(for: language))
+            }
         }
     }
 
@@ -800,21 +911,62 @@ struct AddTorrentSheet: View {
                             options["all-proxy"] = customProxy
                         }
                         
-                        try await downloadManager.addTorrent(
-                            base64: base64,
-                            options: options
-                        )
-                        await MainActor.run {
-                            if autoJumpOnTaskCreated {
-                                downloadManager.currentCategory = .downloading
-                            }
-                            dismiss()
+                        // PRE-FLIGHT CHECK
+                        if let conflict = downloadManager.checkDuplicate(uri: url.absoluteString, dir: saveDirectory.path(percentEncoded: false), customFilename: torrentName) {
+                            self.duplicateConflictType = conflict
+                            self.pendingOptions = options
+                            self.pendingBase64 = base64
+                            self.showDuplicateAlert = true
+                            return // wait for user choice
                         }
+                        
+                        submitTorrent(base64: base64, options: options, suggestedName: nil)
                     } catch {
                         // Handle error
                     }
                 }
             }
+            
+    private func submitTorrent(base64: String, options: [String: Any], suggestedName: String?) {
+        self.isProcessing = true
+        Task {
+            do {
+                // If suggestedName is provided, we tell DownloadManager to use it as an override for root folder name/filename
+                // Actually DownloadManager.addTorrent doesn't take out directly except via options. 
+                // But Wait, in DownloadManager.addTorrent:
+                // If options["out"] is passed, our smart renaming in addTorrent might ignore it for multi-file?
+                // Actually DownloadManager.addTorrent modifies `dir` for multi-file. 
+                var overrides = options
+                if let newName = suggestedName {
+                    if parsedFiles.count > 1 {
+                        // For multi-file, append newName to dir
+                        if let currentDir = overrides["dir"] as? String {
+                            overrides["dir"] = (currentDir as NSString).appendingPathComponent(newName)
+                        }
+                    } else {
+                        // For single-file, set `out`
+                        overrides["out"] = newName
+                    }
+                }
+                
+                try await downloadManager.addTorrent(
+                    base64: base64,
+                    options: overrides
+                )
+                await MainActor.run {
+                    if autoJumpOnTaskCreated {
+                        downloadManager.currentCategory = .downloading
+                    }
+                    dismiss()
+                }
+            } catch {
+                await MainActor.run {
+                    self.isProcessing = false
+                    // Handle error
+                }
+            }
+        }
+    }
 
     
     private func parseTorrent(url: URL) {
