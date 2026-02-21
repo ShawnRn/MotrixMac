@@ -1,29 +1,68 @@
 {
   "fill" : {
-    "automatic-gradient" : "extended-srgb:0.00000,0.53333,1.00000,1.00000"
+    "solid" : "display-p3:0.20784,0.41961,0.59216,1.00000"
   },
   "groups" : [
     {
       "layers" : [
         {
+          "blend-mode-specializations" : [
+            {
+              "appearance" : "tinted",
+              "value" : "hard-light"
+            }
+          ],
           "glass-specializations" : [
             {
-              "value" : false
+              "value" : true
             },
             {
-              "appearance" : "dark",
+              "appearance" : "tinted",
               "value" : true
             }
           ],
-          "image-name" : "NewIcon.png",
-          "name" : "NewIcon",
+          "hidden" : false,
+          "image-name" : "画框 2.png",
+          "name" : "画框 2",
+          "opacity-specializations" : [
+            {
+              "appearance" : "tinted",
+              "value" : 1
+            }
+          ],
           "position" : {
-            "scale" : 0.5,
+            "scale" : 0.49,
             "translation-in-points" : [
               0,
-              0
+              -1.1368683772161603e-13
             ]
           }
+        },
+        {
+          "blend-mode-specializations" : [
+            {
+              "appearance" : "tinted",
+              "value" : "hard-light"
+            }
+          ],
+          "glass-specializations" : [
+            {
+              "value" : true
+            },
+            {
+              "appearance" : "tinted",
+              "value" : true
+            }
+          ],
+          "hidden" : false,
+          "image-name" : "背景画框.png",
+          "name" : "背景画框",
+          "opacity-specializations" : [
+            {
+              "appearance" : "tinted",
+              "value" : 0.3
+            }
+          ]
         }
       ],
       "shadow" : {

@@ -411,13 +411,15 @@ timeout=5
 max-tries=0
 retry-wait=2
 
+# 速度底线 - 对于假死或严重拖慢整体的连接直接断开，交由其他空闲线程重试
+lowest-speed-limit=50K
+
 # --- Downloads ---
 max-concurrent-downloads=\(maxConcurrent > 0 ? maxConcurrent : 5)
 split=\(defaultConnections > 0 ? defaultConnections : 64)
 max-connection-per-server=\(defaultConnections > 0 ? defaultConnections : 64)
-min-split-size=1M
+min-split-size=4M
 piece-length=1M
-stream-piece-selector=geom
 optimize-concurrent-downloads=true
 max-download-limit=\(formatSpeedLimit(maxDownloadSpeed, unit: downloadSpeedUnit))
 max-upload-limit=\(formatSpeedLimit(maxUploadSpeed, unit: uploadSpeedUnit))
@@ -464,6 +466,7 @@ bt-load-saved-metadata=true
 bt-save-metadata=\(btSaveMetadata)
 bt-detach-seed-only=false
 bt-tracker-connect-timeout=20
+bt-prioritize-piece=head=5M,tail=5M
 seed-ratio=\(btContinuousSeeding ? "0" : String(format: "%.1f", seedRatio))
 seed-time=\(btContinuousSeeding ? "0" : String(seedTime))
 
