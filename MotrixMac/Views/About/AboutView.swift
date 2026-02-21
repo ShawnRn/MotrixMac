@@ -38,6 +38,16 @@ struct AboutView: View {
     ]
     @State private var changelogs: [ChangelogItem] = [
         ChangelogItem(
+            version: "1.2",
+            date: "2026-02-21",
+            changes: [
+                "突破底层物理切割边界：全面重设了引擎切片与防假死容错机制。即使在下载最后 1MB 也能调动百兆并发，彻底解决长尾掉速问题。",
+                "修复了在勾选「同时删除本地文件」时物理文件未被清除的问题。",
+                "修复了下载重复添加任务导致自动重命名后缀存在多余空格的格式问题。",
+                "修复了任务列表状态小圆点偶尔重复显示的问题。"
+            ]
+        ),
+        ChangelogItem(
             version: "1.1.9",
             date: "2026-02-17",
             changes: [
