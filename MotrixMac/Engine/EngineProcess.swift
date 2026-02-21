@@ -412,13 +412,13 @@ max-tries=0
 retry-wait=2
 
 # 速度底线 - 对于假死或严重拖慢整体的连接直接断开，交由其他空闲线程重试
-lowest-speed-limit=500K
+lowest-speed-limit=10K
 
 # --- Downloads ---
 max-concurrent-downloads=\(maxConcurrent > 0 ? maxConcurrent : 5)
 split=\(defaultConnections > 0 ? defaultConnections : 64)
 max-connection-per-server=\(defaultConnections > 0 ? defaultConnections : 64)
-min-split-size=1M
+min-split-size=256K
 piece-length=1M
 enable-http-pipelining=true
 enable-http-keep-alive=true
