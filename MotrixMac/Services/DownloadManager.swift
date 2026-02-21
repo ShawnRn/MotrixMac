@@ -852,7 +852,7 @@ final class DownloadManager {
                 return name
             }
             
-            name = ext.isEmpty ? "\(base) (\(counter))" : "\(base) (\(counter)).\(ext)"
+            name = ext.isEmpty ? "\(base)(\(counter))" : "\(base)(\(counter)).\(ext)"
             counter += 1
         }
     }
@@ -1090,7 +1090,7 @@ final class DownloadManager {
         await refreshTasks()
     }
     
-    // Helper to find unique name "Name (N)"
+    // Helper to find unique name "Name(N)"
     private func findUniqueName(baseName: String) -> String {
         var name = baseName
         var counter = 1
@@ -1100,7 +1100,7 @@ final class DownloadManager {
         // but solves the "App Logic" duplicate issue.
         while tasks.contains(where: { $0.name == name }) || 
               persistentTasks.values.contains(where: { $0.name == name }) {
-            name = "\(baseName) (\(counter))"
+            name = "\(baseName)(\(counter))"
             counter += 1
         }
         return name
@@ -1112,7 +1112,7 @@ final class DownloadManager {
         
         while tasks.contains(where: { $0.name == name }) || 
               persistentTasks.values.contains(where: { $0.name == name }) {
-            name = ext.isEmpty ? "\(baseName) (\(counter))" : "\(baseName) (\(counter)).\(ext)"
+            name = ext.isEmpty ? "\(baseName)(\(counter))" : "\(baseName)(\(counter)).\(ext)"
             counter += 1
         }
         return name
@@ -1285,7 +1285,13 @@ final class DownloadManager {
         
         // Handle file deletion if requested
         if deleteFiles {
-            // File deletion logic to be implemented
+            for gid in gids {
+                // Find the task in memory to get its directory and name
+                // (Need to look in the original full list or persistent tasks before removal)
+                if let task = (tasks.first { $0.id == gid } ?? persistentTasks[gid]) {
+                    self.deleteFiles(for: task)
+                }
+            }
         }
         
         // Cleanup deletingGIDs
