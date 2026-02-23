@@ -57,6 +57,7 @@ struct MainContentView: View {
         .id(appTheme) // Force full rebuild on theme setting change
         .onAppear {
             applyTheme(appTheme)
+            NotificationCenter.default.post(name: .mainInterfaceDidAppear, object: nil)
             Task {
                 await downloadManager.connect()
             }

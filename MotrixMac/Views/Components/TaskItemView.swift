@@ -99,22 +99,17 @@ struct TaskItemView: View {
                     
                     // Row 2: Dynamic Status line based on raw formattedStatusLine
                     if !task.formattedStatusLine.isEmpty {
-                        let statusText: String = {
-                            if task.isSeeding {
-                                return task.formattedStatusLine + " · " + "做种中".localized(for: language)
-                            } else if task.isActive && task.totalLength > 0 {
-                                // In DownloadManager we replaced "剩余时间: " with empty or just data
-                                // Now we re-assemble it with localization
-                                return task.formattedStatusLine + " · " + "剩余时间".localized(for: language) + ": " + task.formattedETA
-                            } else {
-                                return task.formattedStatusLine
-                            }
-                        }()
-                        
+                        let statusText = task.formattedStatusLine
                         let suffix = task.isFileMissing ? " · " + "已移除".localized(for: language) : ""
                         Text(statusText + suffix)
                             .font(.subheadline)
-                            .foregroundStyle(task.isFileMissing ? .tertiary : .secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .foregroundStyle(
+                                task.status == "error"
+                                    ? AnyShapeStyle(Color.red.opacity(0.9))
+                                    : (task.isFileMissing ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.secondary))
+                            )
                             .allowsHitTesting(false)
                     }
                 }

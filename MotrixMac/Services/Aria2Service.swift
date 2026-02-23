@@ -429,7 +429,24 @@ actor Aria2Service {
         let numPieces = parseInt("numPieces")
         let infoHash = dict["infoHash"] as? String
         let dir = dict["dir"] as? String ?? ""
-        let errorMessage = dict["errorMessage"] as? String
+        let rawErrorMessage = (dict["errorMessage"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let errorCode = (dict["errorCode"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let errorMessage: String? = {
+            if let rawErrorMessage, !rawErrorMessage.isEmpty {
+                return rawErrorMessage
+            }
+            guard let errorCode, !errorCode.isEmpty else {
+                return nil
+            }
+            switch errorCode {
+            case "8":
+                return "Invalid range header (server may not support resumed ranges)"
+            default:
+                return "aria2 error code \(errorCode)"
+            }
+        }()
 
         // Parse files
         var files: [TaskFile] = []

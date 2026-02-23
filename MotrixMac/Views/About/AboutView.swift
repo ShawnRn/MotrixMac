@@ -38,6 +38,15 @@ struct AboutView: View {
     ]
     @State private var changelogs: [ChangelogItem] = [
         ChangelogItem(
+            version: "1.2.1",
+            date: "2026-02-23",
+            changes: [
+                "新增 Dock 图标下载速度指示器和进度条。",
+                "新增下载完成角标计数。",
+                "修复了一些 bugs。"
+            ]
+        ),
+        ChangelogItem(
             version: "1.2",
             date: "2026-02-21",
             changes: [

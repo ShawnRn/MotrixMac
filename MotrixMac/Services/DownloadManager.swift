@@ -24,6 +24,7 @@ final class DownloadManager {
     private var deletingGIDs: Set<String> = [] // Track tasks being deleted
     private var notifiedStartedGIDs: Set<String> = [] // Track tasks that have triggered speed notification
     private var notifiedCompletedGIDs: Set<String> = [] // Track tasks that have triggered completion notification
+    private var invalidRangeFallbackAppliedGIDs: Set<String> = []
     private var persistentTasks: [String: DownloadTask] = [:] // Local storage for completed tasks
 
     // UI state
@@ -95,6 +96,8 @@ final class DownloadManager {
     private var speedHistoryCache: [String: [Int64]] = [:]
     private var taskDates: [String: Date] = [:] // Cache to store stable addedAt/completedAt dates
     private var taskCompletionDates: [String: Date] = [:] // Cache to store stable completedAt dates
+    private var lastDockIndicatorUpdateAt: Date = .distantPast
+    private var lastDockIndicatorState: (speed: Int64, hasDownloading: Bool, progressPermille: Int)?
 
     private init() {
         requestNotificationPermission()
@@ -311,12 +314,14 @@ final class DownloadManager {
         // Don't nil out aria2Service immediately if we want to keep it? 
         // Actually fine to keep simple.
         isConnected = false
+        updateDockDownloadIndicator(force: true)
     }
 
     /// Synchronous disconnect for app termination
     func disconnectSync() {
         refreshTask?.cancel()
         refreshTask = nil
+        updateDockDownloadIndicator(force: true)
     }
 
     // MARK: - Task Management
@@ -449,6 +454,13 @@ final class DownloadManager {
                     var task = newTask
                     let oldTask = oldTasksMap[newTask.id]
                     
+                    // Keep last known reason when aria2 reports error status without details.
+                    if task.status == "error",
+                       normalizedErrorMessage(task.errorMessage) == nil,
+                       let previousError = normalizedErrorMessage(oldTask?.errorMessage) {
+                        task.errorMessage = previousError
+                    }
+                    
                     // 1. Restore speed history from cache if available
                     if let cachedHistory = self.speedHistoryCache[newTask.id] {
                         task.downloadSpeedHistory = cachedHistory
@@ -560,6 +572,7 @@ final class DownloadManager {
                 }
                 
                 self.updateFilteredTasks()
+                self.updateDockDownloadIndicator()
                 self.saveSpeedHistory()
                 self.lastRpcError = nil
                 
@@ -914,6 +927,11 @@ final class DownloadManager {
             }
         }
         
+        if shouldUseConservativeHTTPOptions(for: finalUri) {
+            applyConservativeHTTPOptions(&finalOptions)
+            Logger.info("DownloadManager: Applied conservative HTTP options for signed URL.")
+        }
+        
         // [Fix] Enforce seeding options for magnet links too
         let btContinuous = UserDefaults.standard.bool(forKey: "btContinuousSeeding")
         if btContinuous {
@@ -934,7 +952,14 @@ final class DownloadManager {
         finalOptions["follow-torrent"] = "false"
         finalOptions["follow-metalink"] = "false"
         
-        _ = try await service.addUri(uris: [finalUri], options: finalOptions)
+        let gid = try await service.addUri(uris: [finalUri], options: finalOptions)
+        
+        // Ensure user gets immediate feedback when a task is added.
+        if !self.notifiedStartedGIDs.contains(gid) {
+            self.notifiedStartedGIDs.insert(gid)
+            let taskName = taskNameForAddedDownload(uri: finalUri, options: finalOptions, fallback: gid)
+            sendNotification(title: "开始下载".localized(for: language), body: "\(taskName) " + "已开始下载".localized(for: language))
+        }
         await refreshTasks()
     }
 
@@ -1086,7 +1111,13 @@ final class DownloadManager {
         }
         finalOptions["bt-detach-seed-only"] = "false"
 
-        _ = try await service.addTorrent(torrent: base64, options: finalOptions)
+        let gid = try await service.addTorrent(torrent: base64, options: finalOptions)
+        
+        if !self.notifiedStartedGIDs.contains(gid) {
+            self.notifiedStartedGIDs.insert(gid)
+            let taskName = taskNameForAddedDownload(uri: "", options: finalOptions, fallback: gid)
+            sendNotification(title: "开始下载".localized(for: language), body: "\(taskName) " + "已开始下载".localized(for: language))
+        }
         await refreshTasks()
     }
     
@@ -1279,6 +1310,7 @@ final class DownloadManager {
         
         // Update UI immediately
         self.updateFilteredTasks()
+        self.updateDockDownloadIndicator(force: true)
         
         // RPC Removal
         for gid in gids {
@@ -1425,22 +1457,19 @@ final class DownloadManager {
                 let gid = firstParam["gid"] as? String
              {
                 Task {
-                    if let task = try? await aria2Service?.tellStatus(gid: gid) {
-                        // [Critical Fix] Filter out all announce/tracker phantom tasks
-                        let name = task.name.lowercased()
-                        if task.name.hasPrefix("[METADATA]") ||
-                           name.contains("announce") ||
-                           name.hasSuffix(".php") ||
-                           task.uri.contains("/announce") { return }
-                        
-                        // [Critical Fix] Don't notify for tasks already known as complete
-                        if let persistent = self.persistentTasks[gid], persistent.status == "complete" { return }
-                        
-                        // Prevent duplicate start notifications
-                        if !self.notifiedStartedGIDs.contains(gid) {
-                            self.notifiedStartedGIDs.insert(gid)
-                            sendNotification(title: "开始下载".localized(for: language), body: "\(task.name) " + "已开始下载".localized(for: language))
-                        }
+                    let task = await resolveTaskForNotification(gid: gid)
+                    
+                    // [Critical Fix] Filter out announce/tracker phantom tasks
+                    if shouldSuppressNotification(for: task) { return }
+                    
+                    // [Critical Fix] Don't notify for tasks already known as complete
+                    if let persistent = self.persistentTasks[gid], persistent.status == "complete" { return }
+                    
+                    // Prevent duplicate start notifications
+                    if !self.notifiedStartedGIDs.contains(gid) {
+                        self.notifiedStartedGIDs.insert(gid)
+                        let taskName = task?.name ?? gid
+                        sendNotification(title: "开始下载".localized(for: language), body: "\(taskName) " + "已开始下载".localized(for: language))
                     }
                 }
             }
@@ -1449,31 +1478,46 @@ final class DownloadManager {
                 let gid = firstParam["gid"] as? String
             {
                 Task {
-                    if let task = try? await aria2Service?.tellStatus(gid: gid) {
-                        // [Critical Fix] Filter out all announce/tracker phantom tasks
-                        let name = task.name.lowercased()
-                        if task.name.hasPrefix("[METADATA]") ||
-                           name.contains("announce") ||
-                           name.hasSuffix(".php") ||
-                           task.uri.contains("/announce") { return }
-                        
-                        // [Fix] Suppress notification if already notified
-                        if self.notifiedCompletedGIDs.contains(gid) {
-                            return
-                        }
-                        
-                        let title = method == "aria2.onBtDownloadComplete" ? "BT 下载完成".localized(for: language) : "下载完成".localized(for: language)
-                        sendNotification(title: title, body: "\(task.name) " + "已下载完成".localized(for: language))
-                        self.notifiedCompletedGIDs.insert(gid)
-                        
-                        // [Critical Fix] Update persistent state and save session immediately
-                        try? await self.aria2Service?.saveSession()
-                        if let existing = self.persistentTasks[gid] {
-                            var updated = existing
-                            updated.status = "complete"
-                            self.persistentTasks[gid] = updated
-                            self.savePersistentTasks()
-                        }
+                    var task = await resolveTaskForNotification(gid: gid)
+                    
+                    // Completion and badge must only be shown for actually completed tasks.
+                    if !isConfirmedComplete(task, gid: gid) {
+                        try? await Task.sleep(for: .milliseconds(200))
+                        task = await resolveTaskForNotification(gid: gid)
+                    }
+                    guard isConfirmedComplete(task, gid: gid) else {
+                        Logger.info("DownloadManager: Ignored premature complete event for gid \(gid)")
+                        return
+                    }
+                    
+                    // [Critical Fix] Filter out announce/tracker phantom tasks
+                    if shouldSuppressNotification(for: task) { return }
+                    
+                    // [Fix] Suppress notification if already notified
+                    if self.notifiedCompletedGIDs.contains(gid) {
+                        return
+                    }
+                    
+                    let title = method == "aria2.onBtDownloadComplete" ? "BT 下载完成".localized(for: language) : "下载完成".localized(for: language)
+                    let taskName = task?.name ?? gid
+                    sendNotification(title: title, body: "\(taskName) " + "已下载完成".localized(for: language))
+                    self.notifiedCompletedGIDs.insert(gid)
+                    await MainActor.run {
+                        AppDelegate.shared?.incrementDockCompletedBadge(by: 1)
+                    }
+                    
+                    // [Critical Fix] Update persistent state and save session immediately
+                    try? await self.aria2Service?.saveSession()
+                    if let existing = self.persistentTasks[gid] {
+                        var updated = existing
+                        updated.status = "complete"
+                        self.persistentTasks[gid] = updated
+                        self.savePersistentTasks()
+                    } else if var resolvedTask = task {
+                        resolvedTask.status = "complete"
+                        resolvedTask.completedAt = resolvedTask.completedAt ?? Date()
+                        self.persistentTasks[gid] = resolvedTask
+                        self.savePersistentTasks()
                     }
                 }
             }
@@ -1482,16 +1526,20 @@ final class DownloadManager {
                 let gid = firstParam["gid"] as? String
             {
                 Task {
-                    if let task = try? await aria2Service?.tellStatus(gid: gid) {
-                        // Suppress notifications for phantom "announce" tasks
-                        if task.name == "announce" || (task.totalLength == 0 && task.name.hasPrefix("announce")) {
-                             return
-                        }
-                        
-                        let errorMessage = task.errorMessage ?? "未知错误".localized(for: language)
-                        Logger.error("DownloadManager: Task \(task.name) (GID: \(gid)) failed: \(errorMessage)")
-                        sendNotification(title: "下载失败".localized(for: language), body: "\(task.name) " + "下载失败".localized(for: language) + ": " + errorMessage)
+                    let task = await resolveTaskForNotification(gid: gid)
+                    // Suppress notifications for phantom announce tasks
+                    if shouldSuppressNotification(for: task) { return }
+                    
+                    let taskName = task?.name ?? gid
+                    let errorMessage = await resolveErrorMessage(gid: gid, initialTask: task)
+                    if shouldApplyInvalidRangeFallback(task: task, gid: gid, errorMessage: errorMessage),
+                       await applyInvalidRangeFallback(gid: gid) {
+                        Logger.info("DownloadManager: Applied invalid-range fallback for \(taskName) (\(gid)), retrying with single connection")
+                        return
                     }
+                    Logger.error("DownloadManager: Task \(taskName) (GID: \(gid)) failed: \(errorMessage)")
+                    sendNotification(title: "下载失败".localized(for: language), body: "\(taskName) " + "下载失败".localized(for: language) + ": " + errorMessage)
+                    markTaskAsError(gid: gid, message: errorMessage)
                 }
             }
         }
@@ -1510,13 +1558,232 @@ final class DownloadManager {
 
         let request = UNNotificationRequest(
             identifier: UUID().uuidString, content: content, trigger: nil)
-        UNUserNotificationCenter.current().add(request)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                Logger.error("DownloadManager: Failed to post notification: \(error.localizedDescription)")
+            }
+        }
+    }
+    
+    private func resolveTaskForNotification(gid: String) async -> DownloadTask? {
+        if let liveTask = tasks.first(where: { $0.id == gid }) {
+            return liveTask
+        }
+        if let storedTask = persistentTasks[gid] {
+            return storedTask
+        }
+        if let remoteTask = try? await aria2Service?.tellStatus(gid: gid) {
+            return remoteTask
+        }
+        return nil
+    }
+    
+    private func resolveErrorMessage(gid: String, initialTask: DownloadTask?) async -> String {
+        if let direct = normalizedErrorMessage(initialTask?.errorMessage) {
+            return direct
+        }
+        
+        // aria2 有时会先发 error 事件，稍后 tellStatus 才带上 errorMessage。
+        for delay in [200, 400, 800] {
+            try? await Task.sleep(for: .milliseconds(delay))
+            if let remoteTask = try? await aria2Service?.tellStatus(gid: gid),
+               let remoteMessage = normalizedErrorMessage(remoteTask.errorMessage) {
+                return remoteMessage
+            }
+        }
+        
+        return "未知错误".localized(for: language)
+    }
+    
+    private func normalizedErrorMessage(_ message: String?) -> String? {
+        guard let raw = message?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
+            return nil
+        }
+        return raw
+    }
+    
+    private func shouldApplyInvalidRangeFallback(task: DownloadTask?, gid: String, errorMessage: String) -> Bool {
+        guard let task else { return false }
+        guard !task.isTorrent else { return false }
+        guard !invalidRangeFallbackAppliedGIDs.contains(gid) else { return false }
+        return errorMessage.lowercased().contains("invalid range header")
+    }
+    
+    private func applyInvalidRangeFallback(gid: String) async -> Bool {
+        guard let service = aria2Service else { return false }
+        
+        do {
+            invalidRangeFallbackAppliedGIDs.insert(gid)
+            try await service.changeOption(gid: gid, options: [
+                "max-connection-per-server": "1",
+                "split": "1",
+                "min-split-size": "100M"
+            ])
+            try? await service.forcePause(gid: gid)
+            try? await Task.sleep(for: .milliseconds(200))
+            try await service.unpause(gid: gid)
+            return true
+        } catch {
+            Logger.error("DownloadManager: Failed to apply invalid-range fallback for gid \(gid): \(error.localizedDescription)")
+            return false
+        }
+    }
+    
+    private func shouldUseConservativeHTTPOptions(for uri: String) -> Bool {
+        guard let components = URLComponents(string: uri),
+              let scheme = components.scheme?.lowercased(),
+              scheme == "http" || scheme == "https"
+        else {
+            return false
+        }
+        
+        let signedQueryKeys = Set([
+            "sign",
+            "signature",
+            "token",
+            "auth",
+            "expires",
+            "x-amz-signature",
+            "x-amz-credential",
+            "x-oss-signature",
+            "x-goog-signature"
+        ])
+        
+        return (components.queryItems ?? []).contains { item in
+            signedQueryKeys.contains(item.name.lowercased())
+        }
+    }
+    
+    private func applyConservativeHTTPOptions(_ options: inout [String: Any]) {
+        options["max-connection-per-server"] = "1"
+        options["split"] = "1"
+        options["min-split-size"] = "100M"
+    }
+    
+    private func shouldSuppressNotification(for task: DownloadTask?) -> Bool {
+        guard let task else { return false }
+        let name = task.name.lowercased()
+        let uri = task.uri.lowercased()
+        return task.name.hasPrefix("[METADATA]") ||
+               name == "announce" ||
+               name.contains("announce") ||
+               name.hasSuffix(".php") ||
+               uri.contains("/announce")
+    }
+    
+    private func isConfirmedComplete(_ task: DownloadTask?, gid: String) -> Bool {
+        if let task, task.status == "complete" {
+            return true
+        }
+        return persistentTasks[gid]?.status == "complete"
+    }
+    
+    private func taskNameForAddedDownload(uri: String, options: [String: Any], fallback: String) -> String {
+        if let out = options["out"] as? String, !out.isEmpty {
+            return out
+        }
+        if let url = URL(string: uri) {
+            if url.scheme?.lowercased() == "magnet" {
+                if let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems,
+                   let dn = items.first(where: { $0.name == "dn" })?.value,
+                   !dn.isEmpty {
+                    return dn.removingPercentEncoding ?? dn
+                }
+                return fallback
+            }
+            let last = url.lastPathComponent
+            if !last.isEmpty && last != "/" {
+                return last.removingPercentEncoding ?? last
+            }
+        }
+        return fallback
+    }
+    
+    private func markTaskAsError(gid: String, message: String) {
+        let normalizedMessage = normalizedErrorMessage(message) ?? "未知错误".localized(for: language)
+        var updatedTaskSnapshot: DownloadTask?
+        
+        if let idx = tasks.firstIndex(where: { $0.id == gid }) {
+            tasks[idx].status = "error"
+            tasks[idx].errorMessage = normalizedMessage
+            updatedTaskSnapshot = tasks[idx]
+        }
+        if var stored = persistentTasks[gid] {
+            stored.status = "error"
+            stored.errorMessage = normalizedMessage
+            persistentTasks[gid] = stored
+            updatedTaskSnapshot = stored
+            savePersistentTasks()
+        } else if let snapshot = updatedTaskSnapshot {
+            persistentTasks[gid] = snapshot
+            savePersistentTasks()
+        }
+        updateFilteredTasks()
+    }
+    
+    private func updateDockDownloadIndicator(force: Bool = false) {
+        let now = Date()
+        if !force, now.timeIntervalSince(lastDockIndicatorUpdateAt) < 1.0 {
+            return
+        }
+
+        guard isConnected else {
+            let nextState: (speed: Int64, hasDownloading: Bool, progressPermille: Int) = (0, false, 0)
+            if force ||
+                lastDockIndicatorState?.speed != nextState.speed ||
+                lastDockIndicatorState?.hasDownloading != nextState.hasDownloading ||
+                lastDockIndicatorState?.progressPermille != nextState.progressPermille
+            {
+                AppDelegate.shared?.updateDockDownloadIndicator(totalSpeed: 0, hasDownloadingTasks: false, progress: 0)
+                lastDockIndicatorState = nextState
+                lastDockIndicatorUpdateAt = now
+            }
+            return
+        }
+
+        let downloadingTasks = tasks.filter { task in
+            task.status == "active" && !task.isSeeding
+        }
+        let totalSpeed = downloadingTasks.reduce(Int64(0)) { partial, task in
+            partial + max(task.downloadSpeed, 0)
+        }
+        let progressTasks = tasks.filter { task in
+            ["active", "waiting", "paused"].contains(task.status) &&
+            !task.isSeeding &&
+            task.totalLength > 0
+        }
+        let totalLength = progressTasks.reduce(Int64(0)) { $0 + max($1.totalLength, 0) }
+        let completedLength = progressTasks.reduce(Int64(0)) { $0 + min(max($1.completedLength, 0), max($1.totalLength, 0)) }
+        let aggregatedProgress = totalLength > 0
+            ? CGFloat(Double(completedLength) / Double(totalLength))
+            : 0
+        let progressPermille = Int((aggregatedProgress * 1000).rounded())
+
+        let nextState: (speed: Int64, hasDownloading: Bool, progressPermille: Int) = (
+            totalSpeed,
+            !downloadingTasks.isEmpty,
+            progressPermille
+        )
+        if force ||
+            lastDockIndicatorState?.speed != nextState.speed ||
+            lastDockIndicatorState?.hasDownloading != nextState.hasDownloading ||
+            lastDockIndicatorState?.progressPermille != nextState.progressPermille
+        {
+            AppDelegate.shared?.updateDockDownloadIndicator(
+                totalSpeed: nextState.speed,
+                hasDownloadingTasks: nextState.hasDownloading,
+                progress: aggregatedProgress
+            )
+            lastDockIndicatorState = nextState
+            lastDockIndicatorUpdateAt = now
+        }
     }
 
     // MARK: - Performance Optimizations
     
     private func precalculateUIStrings(for task: inout DownloadTask) {
         let formatter = Self.byteCountFormatter
+        let language = self.language
         
         // 1. Size Text
         let completed = formatter.string(fromByteCount: task.completedLength)
@@ -1529,14 +1796,18 @@ final class DownloadManager {
         
         // 2. Speed and ETA
         // displayStatus and eta are now methods, no longer pre-calculated as properties
+        task.formattedStatusText = task.displayStatus(for: language)
         if task.isSeeding {
             // Seeding: Show upload speed instead of download
             let uploadSpeed = formatter.string(fromByteCount: task.uploadSpeed) + "/s"
             task.formattedDownloadSpeed = uploadSpeed
             task.formattedETA = "--"
             task.formattedStatusLine = "\(task.formattedSizeText) · ↑ \(uploadSpeed)"
+        } else if task.status == "error" {
+            let reason = normalizedErrorMessage(task.errorMessage) ?? "未知错误".localized(for: language)
+            task.formattedStatusText = "下载失败".localized(for: language) + ": " + reason
+            task.formattedStatusLine = "\(task.formattedSizeText) · \(task.formattedStatusText)"
         } else if task.isActive {
-            let language = self.language
             task.formattedDownloadSpeed = formatter.string(fromByteCount: task.downloadSpeed) + "/s"
             task.formattedETA = task.eta(for: language)
             

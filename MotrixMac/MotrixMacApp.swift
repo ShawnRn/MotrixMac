@@ -9,6 +9,7 @@ extension Notification.Name {
     static let saveSettings = Notification.Name("saveSettings")
     static let discardSettings = Notification.Name("discardSettings")
     static let openMainWindow = Notification.Name("openMainWindow")
+    static let mainInterfaceDidAppear = Notification.Name("mainInterfaceDidAppear")
 }
 
 @main
@@ -169,7 +170,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     // Make aria2Process accessible for preferences
     var aria2Process: EngineProcess?
-    private var dockObserver: NSKeyValueObservation?
+    private var dockTileView: DockSpeedTileView?
+    private let dockBadgeCountKey = "dockCompletedBadgeCount"
+    private var pendingDockBadgeCount = 0
     
     // Sparkle updater controller
     let updaterController: SPUStandardUpdaterController
@@ -187,6 +190,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Start app logging
         Logger.info("MotrixMacApp: App launched")
+        
+        configureDockTileIfNeeded()
+        pendingDockBadgeCount = max(0, UserDefaults.standard.integer(forKey: dockBadgeCountKey))
+        applyDockBadge()
         
         // 0. Register Native Messaging manifests for browsers
         NativeMessagingManager.shared.installManifests()
@@ -232,6 +239,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self,
             selector: #selector(dockPreferenceChanged),
             name: UserDefaults.didChangeNotification,
+            object: nil
+        )
+        
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(mainInterfaceDidAppear),
+            name: .mainInterfaceDidAppear,
+            object: nil
+        )
+        
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(screenParametersDidChange),
+            name: NSApplication.didChangeScreenParametersNotification,
             object: nil
         )
 
@@ -336,7 +357,106 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
     }
+    
+    @objc private func mainInterfaceDidAppear() {
+        clearDockCompletedBadge()
+    }
+    
+    @objc private func screenParametersDidChange() {
+        configureDockTileIfNeeded()
+        dockTileView?.displayScale = effectiveDockDisplayScale()
+        NSApp.dockTile.display()
+    }
 
+    func updateDockDownloadIndicator(totalSpeed: Int64, hasDownloadingTasks: Bool, progress: CGFloat) {
+        configureDockTileIfNeeded()
+        let speedText = hasDownloadingTasks ? compactSpeedText(for: totalSpeed) : nil
+        let clampedProgress = hasDownloadingTasks ? min(max(progress, 0), 1) : 0
+        var needsDisplay = false
+        
+        if dockTileView?.speedText != speedText {
+            dockTileView?.speedText = speedText
+            needsDisplay = true
+        }
+        
+        if let view = dockTileView, abs(view.progress - clampedProgress) > 0.005 {
+            view.progress = clampedProgress
+            needsDisplay = true
+        }
+        
+        if needsDisplay {
+            NSApp.dockTile.display()
+        }
+    }
+    
+    func incrementDockCompletedBadge(by count: Int = 1) {
+        guard count > 0 else { return }
+        pendingDockBadgeCount += count
+        UserDefaults.standard.set(pendingDockBadgeCount, forKey: dockBadgeCountKey)
+        applyDockBadge()
+    }
+    
+    func clearDockCompletedBadge() {
+        guard pendingDockBadgeCount > 0 else { return }
+        pendingDockBadgeCount = 0
+        UserDefaults.standard.set(0, forKey: dockBadgeCountKey)
+        applyDockBadge()
+    }
+    
+    private func applyDockBadge() {
+        NSApp.dockTile.badgeLabel = pendingDockBadgeCount > 0 ? "\(pendingDockBadgeCount)" : nil
+        NSApp.dockTile.display()
+    }
+    
+    private func configureDockTileIfNeeded() {
+        let size = NSApp.dockTile.size
+        let width = max(size.width, 32)
+        let height = max(size.height, 32)
+        let targetFrame = NSRect(x: 0, y: 0, width: width, height: height)
+        
+        if let existingView = dockTileView {
+            if existingView.frame.size != targetFrame.size {
+                existingView.frame = targetFrame
+                existingView.needsDisplay = true
+            }
+            existingView.displayScale = effectiveDockDisplayScale()
+            return
+        }
+        
+        let newView = DockSpeedTileView(
+            frame: targetFrame,
+            iconImage: NSApp.applicationIconImage
+        )
+        newView.displayScale = effectiveDockDisplayScale()
+        dockTileView = newView
+        NSApp.dockTile.contentView = newView
+        NSApp.dockTile.display()
+    }
+    
+    private func effectiveDockDisplayScale() -> CGFloat {
+        // Dock 在外接屏切换时会变化；优先取主屏，其次任意可用屏。
+        let scale = NSScreen.main?.backingScaleFactor ?? NSScreen.screens.first?.backingScaleFactor ?? 2.0
+        return max(1.0, min(scale, 3.0))
+    }
+    
+    private func compactSpeedText(for speed: Int64) -> String {
+        let value = Double(max(speed, 0))
+        
+        if value < 1024 {
+            let k = value / 1024
+            return k > 0 ? String(format: "%.1fK", k) : "0K"
+        } else if value < 1024 * 1024 {
+            let k = value / 1024
+            return k >= 10 ? String(format: "%.0fK", k) : String(format: "%.1fK", k)
+        } else if value < 1024 * 1024 * 1024 {
+            let m = value / (1024 * 1024)
+            return m >= 10 ? String(format: "%.0fM", m) : String(format: "%.1fM", m)
+        } else {
+            let g = value / (1024 * 1024 * 1024)
+            return g >= 10 ? String(format: "%.0fG", g) : String(format: "%.1fG", g)
+        }
+    }
+    
     func applicationWillTerminate(_ notification: Notification) {
         // Gracefully stop aria2
         aria2Process?.stop()
@@ -434,5 +554,208 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     ) {
         // Show banner and play sound even when app is in foreground
         completionHandler([.banner, .sound])
+    }
+}
+
+private final class DockSpeedTileView: NSView {
+    private let iconImage: NSImage
+    var displayScale: CGFloat = 2.0 {
+        didSet {
+            if abs(oldValue - displayScale) > 0.001 {
+                needsDisplay = true
+            }
+        }
+    }
+    var speedText: String? {
+        didSet {
+            needsDisplay = true
+        }
+    }
+    var progress: CGFloat = 0 {
+        didSet {
+            if abs(oldValue - progress) > 0.001 {
+                needsDisplay = true
+            }
+        }
+    }
+
+    init(frame frameRect: NSRect, iconImage: NSImage) {
+        self.iconImage = iconImage
+        super.init(frame: frameRect)
+        wantsLayer = true
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        return nil
+    }
+    
+    override var isOpaque: Bool { false }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        
+        iconImage.draw(in: bounds)
+        
+        guard let speedText, !speedText.isEmpty else { return }
+
+        let minSide = min(bounds.width, bounds.height)
+        let lowDPISizeBoost: CGFloat = displayScale < 1.5 ? 1.20 : 1.0
+        let indicatorHeight = max(16.0 * lowDPISizeBoost, minSide * 0.32 * lowDPISizeBoost)
+        let horizontalPadding = max(4.0, minSide * 0.08)
+        let availableWidth = bounds.width - (horizontalPadding * 2)
+        let widthSafety = max(2.0, 2.0 / max(displayScale, 1.0))
+        
+        let ringWidth = max(4.2 / max(displayScale, 1.0), 3.3)
+        let ringGap = max(1.0, 1.2 / max(displayScale, 1.0))
+        let ringInset = ringGap + ringWidth * 0.5
+        let minimumBottomPadding = ringInset + 1.0
+        let verticalPadding = max(minimumBottomPadding, minSide * 0.08)
+        
+        var fontSize = max(11.0 * lowDPISizeBoost, indicatorHeight * 0.56)
+        let minFontSize = max(9.0, 9.5 * lowDPISizeBoost)
+        var attributes: [NSAttributedString.Key: Any] = [:]
+        var textSize = CGSize.zero
+        repeat {
+            attributes = [
+                .font: NSFont.monospacedDigitSystemFont(ofSize: fontSize, weight: .semibold),
+                .foregroundColor: NSColor.white
+            ]
+            textSize = speedText.size(withAttributes: attributes)
+            if textSize.width + horizontalPadding * 2.2 + widthSafety <= availableWidth || fontSize <= minFontSize {
+                break
+            }
+            fontSize -= 0.5
+        } while true
+        
+        let widthAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: fontSize, weight: .semibold)
+        ]
+        let stableTemplateWidth = ("999K" as NSString).size(withAttributes: widthAttributes).width
+        let minIndicatorWidth = stableTemplateWidth + horizontalPadding * 2.2 + widthSafety
+        let indicatorWidth = min(
+            availableWidth,
+            max(minIndicatorWidth, textSize.width + horizontalPadding * 2.2 + widthSafety)
+        )
+
+        var indicatorRect = NSRect(
+            x: (bounds.width - indicatorWidth) * 0.5,
+            y: verticalPadding,
+            width: indicatorWidth,
+            height: indicatorHeight
+        )
+        indicatorRect = pixelAligned(indicatorRect, scale: displayScale)
+
+        let indicatorPath = NSBezierPath(roundedRect: indicatorRect, xRadius: indicatorHeight / 2, yRadius: indicatorHeight / 2)
+        NSColor.controlAccentColor.withAlphaComponent(0.95).setFill()
+        indicatorPath.fill()
+        
+        NSColor.white.withAlphaComponent(0.30).setStroke()
+        indicatorPath.lineWidth = max(1.0 / displayScale, 0.75)
+        indicatorPath.stroke()
+
+        var textOrigin = NSPoint(
+            x: indicatorRect.midX - textSize.width * 0.5,
+            y: indicatorRect.midY - textSize.height * 0.5
+        )
+        textOrigin = pixelAligned(textOrigin, scale: displayScale)
+        (speedText as NSString).draw(at: textOrigin, withAttributes: attributes)
+        
+        // Capsule ring around pill; only progressed segment is rendered.
+        let clampedProgress = min(max(progress, 0), 1)
+        if clampedProgress > 0 {
+            var ringRect = indicatorRect.insetBy(dx: -ringInset, dy: -ringInset)
+            ringRect = pixelAligned(ringRect, scale: displayScale)
+            let ringPath = capsuleProgressPath(in: ringRect, progress: clampedProgress)
+            ringPath.lineWidth = ringWidth
+            ringPath.lineCapStyle = .round
+            ringPath.lineJoinStyle = .round
+            NSColor.white.withAlphaComponent(0.98).setStroke()
+            ringPath.stroke()
+        }
+    }
+
+    private func capsuleProgressPath(in rect: NSRect, progress: CGFloat) -> NSBezierPath {
+        let path = NSBezierPath()
+        let clamped = min(max(progress, 0), 1)
+        guard clamped > 0 else { return path }
+
+        let radius = rect.height * 0.5
+        let straight = max(0, rect.width - radius * 2)
+        let arcLength = CGFloat.pi * radius
+        let topHalf = straight * 0.5
+        let totalLength = topHalf + arcLength + straight + arcLength + topHalf
+        var remaining = totalLength * clamped
+
+        let xMid = rect.midX
+        let yTop = rect.maxY
+        let yBottom = rect.minY
+        let rightX = rect.maxX - radius
+        let leftX = rect.minX + radius
+        let rightCenter = NSPoint(x: rightX, y: rect.midY)
+        let leftCenter = NSPoint(x: leftX, y: rect.midY)
+
+        path.move(to: NSPoint(x: xMid, y: yTop))
+
+        if topHalf > 0 {
+            if remaining <= topHalf {
+                path.line(to: NSPoint(x: xMid + remaining, y: yTop))
+                return path
+            }
+            path.line(to: NSPoint(x: rightX, y: yTop))
+            remaining -= topHalf
+        }
+
+        if radius > 0 {
+            if remaining <= arcLength {
+                let delta = (remaining / radius) * 180 / CGFloat.pi
+                path.appendArc(withCenter: rightCenter, radius: radius, startAngle: 90, endAngle: 90 - delta, clockwise: true)
+                return path
+            }
+            path.appendArc(withCenter: rightCenter, radius: radius, startAngle: 90, endAngle: -90, clockwise: true)
+            remaining -= arcLength
+        }
+
+        if straight > 0 {
+            if remaining <= straight {
+                path.line(to: NSPoint(x: rightX - remaining, y: yBottom))
+                return path
+            }
+            path.line(to: NSPoint(x: leftX, y: yBottom))
+            remaining -= straight
+        }
+
+        if radius > 0 {
+            if remaining <= arcLength {
+                let delta = (remaining / radius) * 180 / CGFloat.pi
+                path.appendArc(withCenter: leftCenter, radius: radius, startAngle: -90, endAngle: -90 - delta, clockwise: true)
+                return path
+            }
+            path.appendArc(withCenter: leftCenter, radius: radius, startAngle: -90, endAngle: -270, clockwise: true)
+            remaining -= arcLength
+        }
+
+        if topHalf > 0 {
+            let consumed = min(remaining, topHalf)
+            path.line(to: NSPoint(x: leftX + consumed, y: yTop))
+        }
+
+        return path
+    }
+
+    private func pixelAligned(_ rect: NSRect, scale: CGFloat) -> NSRect {
+        guard scale > 0 else { return rect }
+        let x = (rect.origin.x * scale).rounded() / scale
+        let y = (rect.origin.y * scale).rounded() / scale
+        let w = (rect.size.width * scale).rounded() / scale
+        let h = (rect.size.height * scale).rounded() / scale
+        return NSRect(x: x, y: y, width: w, height: h)
+    }
+
+    private func pixelAligned(_ point: NSPoint, scale: CGFloat) -> NSPoint {
+        guard scale > 0 else { return point }
+        let x = (point.x * scale).rounded() / scale
+        let y = (point.y * scale).rounded() / scale
+        return NSPoint(x: x, y: y)
     }
 }
