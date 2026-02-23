@@ -54,3 +54,23 @@
     - `新增「单列表模式」：合并下载中和已完成任务，专注当前任务。`
     - `重构了删除确认弹窗的数据传递机制，提升稳定性。`
 - **语气**: 友好且准确，必要时可使用 emoji（如 😃）。
+
+## 发布流程约定 (Release Workflow)
+
+### 发布顺序（必须遵守）
+1. **先更新代码到 GitHub**（提交并推送主分支）。
+2. **再创建 GitHub Release**（上传对应版本 DMG）。
+3. **最后更新 `appcast.xml`**（必须在 Release 发布后执行，确保下载链接可用）。
+
+### 版本号一致性
+- GitHub Release 的 `version/build` 必须与 Xcode 工程一致：
+  - `MARKETING_VERSION`
+  - `CURRENT_PROJECT_VERSION`
+- `version.env` 如存在，需与上述值保持一致，不允许出现版本回退或不一致。
+
+### 更新日志一致性
+- GitHub Release 的更新日志必须与 `AboutView` 中当前版本（`changelogs` 首项）的内容完全同步。
+- 同步时以代码文件中的最新文案为准，不使用旧草稿或临时文案。
+
+### 发布前确认
+- 在执行正式 Release 创建前，需先向负责人确认一次（口头或文字确认均可），再执行发布动作。
