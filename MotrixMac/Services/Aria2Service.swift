@@ -231,6 +231,14 @@ actor Aria2Service {
         _ = try await call(method: "aria2.changeOption", params: [gid, options])
     }
 
+    func getOption(gid: String) async throws -> [String: Any] {
+        let result = try await call(method: "aria2.getOption", params: [gid])
+        guard let options = result as? [String: Any] else {
+            throw Aria2Error.invalidResponse
+        }
+        return options
+    }
+
     func remove(gid: String) async throws {
         _ = try await call(method: "aria2.remove", params: [gid])
     }

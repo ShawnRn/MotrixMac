@@ -1612,16 +1612,40 @@ final class DownloadManager {
     private func applyInvalidRangeFallback(gid: String) async -> Bool {
         guard let service = aria2Service else { return false }
         
+        // 1. Resolve task details and options before removal
+        let task = await resolveTaskForNotification(gid: gid)
+        guard let task, !task.uri.isEmpty else { return false }
+        
+        // Fetch original options to preserve Browser UA, Cookies, etc.
+        let originalOptions = (try? await service.getOption(gid: gid)) ?? [:]
+        
         do {
             invalidRangeFallbackAppliedGIDs.insert(gid)
-            try await service.changeOption(gid: gid, options: [
-                "max-connection-per-server": "1",
-                "split": "1",
-                "min-split-size": "100M"
-            ])
-            try? await service.forcePause(gid: gid)
-            try? await Task.sleep(for: .milliseconds(200))
-            try await service.unpause(gid: gid)
+            
+            // 2. THOROUGH REMOVAL from UI and Persistence
+            await removeTasks(gids: [gid], deleteFiles: false)
+            
+            // 3. WAIT a bit for cooldown
+            try? await Task.sleep(for: .seconds(2))
+            
+            // 4. Merge FALLBACK options into ORIGINAL options
+            // We only override the network settings that cause the Range error
+            var finalOptions: [String: Any] = originalOptions
+            finalOptions["dir"] = task.dir
+            finalOptions["out"] = task.name
+            finalOptions["auto-file-renaming"] = "false"
+            finalOptions["max-connection-per-server"] = "1"
+            finalOptions["split"] = "1"
+            finalOptions["min-split-size"] = "100M"
+            
+            // NOTE: We do NOT set a hardcoded Chrome UA here anymore. 
+            // If the original task from extension had one (in 'user-agent' or 'header'), it's already in finalOptions.
+            
+            let newGid = try await service.addUri(uris: [task.uri], options: finalOptions)
+            
+            invalidRangeFallbackAppliedGIDs.insert(newGid)
+            
+            Logger.info("DownloadManager: Re-added task \(task.name) as \(newGid) while PRESERVING original headers/UA")
             return true
         } catch {
             Logger.error("DownloadManager: Failed to apply invalid-range fallback for gid \(gid): \(error.localizedDescription)")

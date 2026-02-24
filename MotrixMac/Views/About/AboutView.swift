@@ -38,6 +38,14 @@ struct AboutView: View {
     ]
     @State private var changelogs: [ChangelogItem] = [
         ChangelogItem(
+            version: "1.2.2",
+            date: "2026-02-24",
+            changes: [
+                "优化了下载失败回退机制，修复了部分任务下载失败的问题。",
+                "修复了一些已知问题，提升了稳定性。"
+            ]
+        ),
+        ChangelogItem(
             version: "1.2.1",
             date: "2026-02-23",
             changes: [
@@ -254,8 +262,8 @@ struct AboutView: View {
                             .font(.system(size: 24, weight: .semibold))
                             
                         Text(String(format: "版本 %1$@ (%2$@)".localized(for: language), 
-                            Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1.6",
-                            Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "2026021300"))
+                            Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.2.2",
+                            Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "2026022418"))
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             
