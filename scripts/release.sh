@@ -28,22 +28,17 @@ fi
 
 echo "--- 开始为版本 $VERSION 准备发布 ---"
 
-# 2. 生成基于日期的 Build 号 (YYYYMMDDxx)
-echo "正在生成流水号 Build 号..."
-TODAY=$(date +"%Y%m%d")
-# 从 appcast.xml 中查找今天已有的最高版本号
-LAST_BUILD=$(grep -oE "<sparkle:version>${TODAY}[0-9]{2}</sparkle:version>" "$APPCAST_FILE" | grep -oE "${TODAY}[0-9]{2}" | sort -nr | head -n 1)
+# 2. 从项目设置中获取当前的 Build 号 (sparkle:version)
+echo "正在从项目设置中提取流水号 Build 号..."
+XCODE_SETTINGS=$(xcodebuild -showBuildSettings -project "$PROJECT_DIR/MotrixMac.xcodeproj" -scheme "MotrixMac" -configuration "Release" 2>/dev/null)
+SPARKLE_VERSION=$(echo "$XCODE_SETTINGS" | grep " CURRENT_PROJECT_VERSION =" | head -n 1 | awk '{print $3}')
 
-if [ -z "$LAST_BUILD" ]; then
-    SPARKLE_VERSION="${TODAY}00"
-else
-    # 提取最后两位并加 1
-    SUFFIX=${LAST_BUILD:8:2}
-    NEXT_SUFFIX=$(printf "%02d" $((10#$SUFFIX + 1)))
-    SPARKLE_VERSION="${TODAY}${NEXT_SUFFIX}"
+if [ -z "$SPARKLE_VERSION" ]; then
+    echo "警告: 无法从项目设置获取 CURRENT_PROJECT_VERSION，回退到日期生成方案..."
+    SPARKLE_VERSION=$(date +"%Y%m%d%H")
 fi
 
-echo "生成的 Build 号 (sparkle:version): $SPARKLE_VERSION"
+echo "提取到的 Build 号 (sparkle:version): $SPARKLE_VERSION"
 
 # 3. 生成签名
 echo "正在生成 EdDSA 签名..."
