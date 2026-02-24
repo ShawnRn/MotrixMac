@@ -3,12 +3,12 @@
     <channel>
         <title>MotrixMac</title>
         <item>
-            <title>1.2.1</title>
-            <pubDate>Mon, 23 Feb 2026 14:54:05 +0000</pubDate>
-            <sparkle:version>2026022300</sparkle:version>
-            <sparkle:shortVersionString>1.2.1</sparkle:shortVersionString>
+            <title>1.2.2</title>
+            <pubDate>Tue, 24 Feb 2026 17:03:56 +0800</pubDate>
+            <sparkle:version>2026022418</sparkle:version>
+            <sparkle:shortVersionString>1.2.2</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>15.6</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/ShawnRn/MotrixMac/releases/download/v1.2.1/MotrixMac_1.2.1.dmg" type="application/octet-stream" sparkle:edSignature="G7YZ+/5n86rwXN4ypCSB5S4KBT28KOof9hm/4Mf9jNUiQsnhpS4vNbZ0Nu7xIa8F0f0IJVMaUd/C8hwaVro5BQ==" length="12642023"/>
+            <enclosure url="https://github.com/ShawnRn/MotrixMac/releases/download/v1.2.2/MotrixMac_1.2.2.dmg" type="application/octet-stream" sparkle:edSignature="iPvNRGiXBWG2Kg3SFb7zMpGawKr3Jx/FO3IiqArYBxC8dvnKbW9Y9DFvNsd4ZHuhorhJ6j5+goH9+qCAX2hqCg==" length="11276815"/>
         </item>
     </channel>
 </rss>
