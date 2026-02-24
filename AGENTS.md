@@ -57,10 +57,16 @@
 
 ## 发布流程约定 (Release Workflow)
 
-### 发布顺序（必须遵守）
-1. **先更新代码到 GitHub**（提交并推送主分支）。
-2. **再创建 GitHub Release**（上传对应版本 DMG）。
-3. **最后更新 `appcast.xml`**（必须在 Release 发布后执行，确保下载链接可用）。
+### 发布顺序（必须遵守 - 铁律）
+
+> [!CAUTION]
+> **`appcast.xml` 必须是全流程中最后一个被 `push` 到远程仓库的文件。** 
+> 如果在 GitHub Release 创建并上传 DMG 之前就推送了包含新版本信息的 `appcast.xml`，会导致用户在更新时因为找不到文件而报错。
+
+1. **更新代码并推送 (不包含 `appcast.xml`)**：提交业务修改和版本号更新，推送到 GitHub。
+2. **创建 GitHub Release**：手动或通过 `gh` CLI 创建 Release，并上传生成的 `MotrixMac_x.x.x.dmg`。
+3. **运行发布脚本更新本地 `appcast.xml`**：运行 `./scripts/release.sh`。
+4. **单独推送 `appcast.xml` (最后一步)**：只有在确认 Release 已发布且链接可访问后，再 `git commit` 并 `push` 这一单个文件。
 
 ### 版本号一致性
 - GitHub Release 的 `version/build` 必须与 Xcode 工程一致：
