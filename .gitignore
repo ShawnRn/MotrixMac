@@ -50,6 +50,5 @@ AppIcon/
 # Original Motrix extension (reference only)
 motrix-webextension-master/
 
-# IDE / Agent
+# IDE
 .vscode/
-.agent/workflows/
