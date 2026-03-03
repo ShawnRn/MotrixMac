@@ -33,6 +33,7 @@ packages/
 # Build artifacts
 .build/
 MotrixMac.app/
+MotrixMac_*.app/
 
 # Local Release & Logs
 releases/
@@ -45,3 +46,10 @@ AppIcon/
 
 .codex/
 参考/
+
+# Original Motrix extension (reference only)
+motrix-webextension-master/
+
+# IDE / Agent
+.vscode/
+.agent/workflows/
