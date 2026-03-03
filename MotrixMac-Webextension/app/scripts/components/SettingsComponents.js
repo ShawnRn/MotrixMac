@@ -108,7 +108,7 @@ const ActionButton = styled.button`
     background: transparent;
     color: var(--primary-color);
     border: 1px solid var(--primary-color);
-    
+
     &:hover {
       background: var(--primary-color-dim);
     }
@@ -116,25 +116,25 @@ const ActionButton = styled.button`
 `;
 
 const InputRowContainer = styled.div`
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    width: 100%;
-    margin-top: 8px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  margin-top: 8px;
 `;
 
 const InputWrapper = styled.div`
-    position: relative;
-    flex: 1;
-    display: flex;
-    align-items: center;
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
 `;
 
 const VisibilityButton = styled(IconButton)`
-    position: absolute;
-    right: 8px;
-    padding: 4px;
-    color: var(--text-secondary);
+  position: absolute;
+  right: 8px;
+  padding: 4px;
+  color: var(--text-secondary);
 `;
 
 // --- Public Components ---
@@ -154,7 +154,13 @@ export const SettingsRow = ({ label, description, icon, children, info }) => (
         {label}
         {info && (
           <Tooltip title={info} arrow placement="top">
-            <InfoOutlinedIcon style={{ fontSize: 16, color: 'var(--text-secondary)', cursor: 'help' }} />
+            <InfoOutlinedIcon
+              style={{
+                fontSize: 16,
+                color: 'var(--text-secondary)',
+                cursor: 'help',
+              }}
+            />
           </Tooltip>
         )}
       </Label>
@@ -173,7 +179,14 @@ export const ToggleSwitch = ({ checked, onChange }) => (
   />
 );
 
-export const InputGroup = ({ value, onChange, placeholder, onSave, type = "text", buttonLabel = "Save" }) => {
+export const InputGroup = ({
+  value,
+  onChange,
+  placeholder,
+  onSave,
+  type = 'text',
+  buttonLabel = 'Save',
+}) => {
   const [showPassword, setShowPassword] = React.useState(false);
   const isPassword = type === 'password';
 
@@ -192,11 +205,17 @@ export const InputGroup = ({ value, onChange, placeholder, onSave, type = "text"
             size="small"
             onClick={() => setShowPassword(!showPassword)}
           >
-            {showPassword ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
+            {showPassword ? (
+              <VisibilityOff fontSize="small" />
+            ) : (
+              <Visibility fontSize="small" />
+            )}
           </VisibilityButton>
         )}
       </InputWrapper>
-      <ActionButton className="secondary" onClick={onSave}>{buttonLabel}</ActionButton>
+      <ActionButton className="secondary" onClick={onSave}>
+        {buttonLabel}
+      </ActionButton>
     </InputRowContainer>
   );
 };
@@ -223,8 +242,8 @@ export const TextArea = styled.textarea`
 `;
 
 export const PrimaryButton = styled(ActionButton)`
-    width: 100%;
-    margin-top: 12px;
+  width: 100%;
+  margin-top: 12px;
 `;
 
 export const Select = styled.select`
@@ -237,12 +256,12 @@ export const Select = styled.select`
   font-size: 14px;
   outline: none;
   cursor: pointer;
-  background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23AAAAAA%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E");
+  background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23AAAAAA%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E');
   background-repeat: no-repeat;
   background-position: right 12px top 50%;
   background-size: 10px auto;
   min-width: 120px;
-  
+
   &:focus {
     border-color: var(--primary-color);
   }
@@ -290,7 +309,7 @@ const DeleteButton = styled.button`
   align-items: center;
   color: var(--text-secondary);
   opacity: 0.6;
-  
+
   &:hover {
     opacity: 1;
     color: #ff4d4f;
@@ -302,7 +321,13 @@ const AddRow = styled.div`
   gap: 8px;
 `;
 
-export const BlacklistEditor = ({ items, onAdd, onRemove, placeholder, cta }) => {
+export const BlacklistEditor = ({
+  items,
+  onAdd,
+  onRemove,
+  placeholder,
+  cta,
+}) => {
   const [text, setText] = React.useState('');
 
   const handleAdd = () => {
@@ -325,7 +350,16 @@ export const BlacklistEditor = ({ items, onAdd, onRemove, placeholder, cta }) =>
           <Chip key={`${item}-${idx}`}>
             {item}
             <DeleteButton onClick={() => onRemove(item)}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
                 <line x1="18" y1="6" x2="6" y2="18"></line>
                 <line x1="6" y1="6" x2="18" y2="18"></line>
               </svg>
@@ -338,10 +372,10 @@ export const BlacklistEditor = ({ items, onAdd, onRemove, placeholder, cta }) =>
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={placeholder || "domain.com"}
+          placeholder={placeholder || 'domain.com'}
         />
         <ActionButton onClick={handleAdd} disabled={!text.trim()}>
-          {cta || "Add"}
+          {cta || 'Add'}
         </ActionButton>
       </AddRow>
     </BlacklistContainer>

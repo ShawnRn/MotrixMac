@@ -81,8 +81,9 @@ struct TaskItemView: View {
                 
                 // Row 2: Status Metadata (Subheadline)
                 HStack(spacing: 8) {
+                    let isRetrying = downloadManager.isTaskRetrying(task.id)
                     if task.status != "complete" && task.status != "removed" {
-                        if task.isIndeterminate {
+                        if task.isIndeterminate || isRetrying {
                              IndeterminateBar(tint: task.statusColor, height: 6)
                                  .frame(width: 100)
                                  .clipShape(Capsule())

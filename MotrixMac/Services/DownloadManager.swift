@@ -25,7 +25,9 @@ final class DownloadManager {
     private var notifiedStartedGIDs: Set<String> = [] // Track tasks that have triggered speed notification
     private var notifiedCompletedGIDs: Set<String> = [] // Track tasks that have triggered completion notification
     private var invalidRangeFallbackAppliedGIDs: Set<String> = []
+    private var pendingExpectedLengths: [String: Int64] = [:] // Map of [NewGID: ExpectedTotalLength]
     private var persistentTasks: [String: DownloadTask] = [:] // Local storage for completed tasks
+    private var retryTransitionGIDs: [String: String] = [:] // Map of [OldGID: NewGID_Placeholder_or_Final]
 
     // UI state
     var showAddTaskSheet = false
@@ -454,6 +456,19 @@ final class DownloadManager {
                     var task = newTask
                     let oldTask = oldTasksMap[newTask.id]
                     
+                    // [Fix] Preserve or update expectedTotalLength
+                    // If we have a non-zero totalLength, it's our new expectation.
+                    // If the current totalLength is 0 (waiting), keep the old expectation.
+                    if newTask.totalLength > 1024 {
+                        task.expectedTotalLength = newTask.totalLength
+                    } else if let pending = self.pendingExpectedLengths[newTask.id] {
+                        task.expectedTotalLength = pending
+                        // Once consumed, we can remove it, but maybe keep it for a few cycles to be safe
+                        // self.pendingExpectedLengths.removeValue(forKey: newTask.id)
+                    } else {
+                        task.expectedTotalLength = oldTask?.expectedTotalLength
+                    }
+                    
                     // Keep last known reason when aria2 reports error status without details.
                     if task.status == "error",
                        normalizedErrorMessage(task.errorMessage) == nil,
@@ -467,19 +482,16 @@ final class DownloadManager {
                     }
                     
                     // 2. Update with new real-time data if active
+                    if newTask.downloadSpeed > 0 && 
+                       !self.notifiedStartedGIDs.contains(newTask.id) &&
+                       (self.persistentTasks[newTask.id]?.status != "complete") {
+                        self.notifiedStartedGIDs.insert(newTask.id)
+                        self.sendNotification(title: "开始下载".localized(for: language), body: "\(newTask.name) " + "速度".localized(for: language) + ": \(newTask.downloadSpeed.formatted(.byteCount(style: .file)))/s")
+                    }
+                    
+                    // If this is the first time we see it active, prepend a 0 for a cleaner chart start
                     if newTask.status == "active" {
                         var history = task.downloadSpeedHistory
-                        
-                        // [New] Notify when speed appears (delayed start notification)
-                        // [Critical Fix] Also check persistent status to prevent ghost notifications for completed tasks
-                        if newTask.downloadSpeed > 0 && 
-                           !self.notifiedStartedGIDs.contains(newTask.id) &&
-                           (self.persistentTasks[newTask.id]?.status != "complete") {
-                            self.notifiedStartedGIDs.insert(newTask.id)
-                            self.sendNotification(title: "开始下载".localized(for: language), body: "\(newTask.name) " + "速度".localized(for: language) + ": \(newTask.downloadSpeed.formatted(.byteCount(style: .file)))/s")
-                        }
-                        
-                        // If this is the first time we see it active, prepend a 0 for a cleaner chart start
                         if history.isEmpty {
                             history.append(0)
                         }
@@ -555,21 +567,45 @@ final class DownloadManager {
                 }
                 
                 // 5. Merge persistent tasks that are not in the current engine list
-                // This handles cases where aria2 session drops completed tasks
                 let engineGIDs = Set(newTasks.map { $0.id })
+                
+                // Handle retry transitions: keep old item until new item appears
+                let activeRetries = self.retryTransitionGIDs
+                for (oldGid, newGid) in activeRetries {
+                    // 1. If the new GID is already in engine list, transition is complete
+                    if newGid != "pending" && engineGIDs.contains(newGid) {
+                        self.retryTransitionGIDs.removeValue(forKey: oldGid)
+                        continue
+                    }
+                    
+                    // 2. If the old task is neither in engine list nor current tasks,
+                    // we MUST recover it to prevent flickering.
+                    if !engineGIDs.contains(oldGid) {
+                        // Look for it in persistent storage as a backup
+                        if var pTask = self.persistentTasks[oldGid] {
+                            self.precalculateUIStrings(for: &pTask)
+                            self.tasks.append(pTask)
+                        } else if var oldTask = self.tasks.first(where: { $0.id == oldGid }) {
+                            // Fallback to memory task list if not yet persisted or if pTask lookup failed
+                            self.precalculateUIStrings(for: &oldTask)
+                            self.tasks.append(oldTask)
+                        }
+                    }
+                }
+                
+                let combinedGIDs = Set(self.tasks.map { $0.id })
                 for (gid, task) in self.persistentTasks {
-                    if !engineGIDs.contains(gid) && !self.deletingGIDs.contains(gid) {
+                    if !combinedGIDs.contains(gid) && !self.deletingGIDs.contains(gid) {
                         var pTask = task
-                        
-                        // Restore speed history for persistent tasks if missing
                         if pTask.downloadSpeedHistory.isEmpty, let cachedHistory = self.speedHistoryCache[gid] {
                             pTask.downloadSpeedHistory = cachedHistory
                         }
-                        
                         self.precalculateUIStrings(for: &pTask)
                         self.tasks.append(pTask)
                     }
                 }
+                
+                // Done mapping and appending, tasks are fully updated.
                 
                 self.updateFilteredTasks()
                 self.updateDockDownloadIndicator()
@@ -580,6 +616,16 @@ final class DownloadManager {
                 let downloadingCount = self.taskCount(for: .downloading)
                 let completedCount = self.taskCount(for: .completed)
                 print("DownloadManager: UI State - Downloading: \(downloadingCount), Completed: \(completedCount)")
+                
+                // [Fix] Aggressively clear ghost badge if task list is truly empty
+                if downloadingCount == 0 && completedCount == 0 && tasks.isEmpty {
+                    Task { @MainActor in
+                        AppDelegate.shared?.clearDockCompletedBadge()
+                        UserDefaults.standard.set(0, forKey: "dockCompletedBadgeCount")
+                        // Clear any leftover pending expectations to avoid memory leaks
+                        self.pendingExpectedLengths.removeAll()
+                    }
+                }
         } catch {
             if let rpcError = error as? Aria2Error {
                 if case .rpcError(let msg) = rpcError {
@@ -810,6 +856,10 @@ final class DownloadManager {
             }
             return false
         }.count
+    }
+
+    func isTaskRetrying(_ gid: String) -> Bool {
+        return retryTransitionGIDs.keys.contains(gid)
     }
 
     /// Pre-flight check for duplicate downloads (either in the task list or on disk)
@@ -1288,7 +1338,7 @@ final class DownloadManager {
         await removeTasks(gids: gids, deleteFiles: withFiles)
     }
 
-    func removeTasks(gids: [String], deleteFiles: Bool) async {
+    func removeTasks(gids: [String], deleteFiles: Bool, keepInTasksWhileRetrying: Bool = false) async {
         guard !gids.isEmpty, let service = aria2Service else { return }
         
         // Pre-fetch tasks before they are removed from memory so we can delete their files later
@@ -1298,7 +1348,10 @@ final class DownloadManager {
         
         // 1. Mark as deleting and remove from UI
         self.deletingGIDs.formUnion(gids)
-        self.tasks.removeAll { gids.contains($0.id) }
+        
+        if !keepInTasksWhileRetrying {
+            self.tasks.removeAll { gids.contains($0.id) }
+        }
         
         // Remove from persistent storage too
         for id in gids {
@@ -1500,6 +1553,31 @@ final class DownloadManager {
                     
                     let title = method == "aria2.onBtDownloadComplete" ? "BT 下载完成".localized(for: language) : "下载完成".localized(for: language)
                     let taskName = task?.name ?? gid
+                    let sizeInfo = task.map { "\($0.completedLength)/\($0.totalLength) bytes" } ?? "unknown size"
+                    
+                    // [Critical Fix] Detect "Fake Completion" (e.g., getting a 23-byte error page instead of the real file)
+                    if let t = task {
+                        // If we had a previously recorded total length and it's much larger than current totalLength, it's a failure.
+                        // Or if totalLength is suspiciously small (like 23 bytes) for a non-trivial file.
+                        let isSuspiciouslySmall = t.totalLength > 0 && t.totalLength < 1024 // Error pages are usually very small
+                        let lengthMismatch = t.expectedTotalLength != nil && t.totalLength < t.expectedTotalLength!
+                        
+                        if isSuspiciouslySmall || lengthMismatch {
+                            let errorReason = lengthMismatch ? "文件长度不匹配 (预期: \(t.expectedTotalLength!))" : "服务器返回错误页 (大小: \(t.totalLength)B)"
+                            Logger.error("DownloadManager: Detected fake completion for \(taskName) (\(gid)): \(errorReason)")
+                            
+                            // Treat as error instead of complete
+                            sendNotification(title: "下载失败".localized(for: language), body: "\(taskName) " + "下载失败".localized(for: language) + ": \(errorReason)")
+                            markTaskAsError(gid: gid, message: errorReason)
+                            
+                            // Clean up the fake file so it doesn't stay on disk as "completed"
+                            self.deleteFiles(for: t)
+                            return
+                        }
+                    }
+                    
+                    Logger.info("DownloadManager: Task \(taskName) (\(gid)) completed with \(sizeInfo)")
+                    
                     sendNotification(title: title, body: "\(taskName) " + "已下载完成".localized(for: language))
                     self.notifiedCompletedGIDs.insert(gid)
                     await MainActor.run {
@@ -1531,15 +1609,16 @@ final class DownloadManager {
                     if shouldSuppressNotification(for: task) { return }
                     
                     let taskName = task?.name ?? gid
-                    let errorMessage = await resolveErrorMessage(gid: gid, initialTask: task)
+                    let (errorMessage, errorCode) = await resolveDetailedError(gid: gid, initialTask: task)
                     if shouldApplyInvalidRangeFallback(task: task, gid: gid, errorMessage: errorMessage),
                        await applyInvalidRangeFallback(gid: gid) {
                         Logger.info("DownloadManager: Applied invalid-range fallback for \(taskName) (\(gid)), retrying with single connection")
                         return
                     }
-                    Logger.error("DownloadManager: Task \(taskName) (GID: \(gid)) failed: \(errorMessage)")
-                    sendNotification(title: "下载失败".localized(for: language), body: "\(taskName) " + "下载失败".localized(for: language) + ": " + errorMessage)
-                    markTaskAsError(gid: gid, message: errorMessage)
+                    let fullError = errorCode != nil ? "\(errorMessage) (Code: \(errorCode!))" : errorMessage
+                    Logger.error("DownloadManager: Task \(taskName) (GID: \(gid)) failed: \(fullError)")
+                    sendNotification(title: "下载失败".localized(for: language), body: "\(taskName) " + "下载失败".localized(for: language) + ": \(fullError)")
+                    markTaskAsError(gid: gid, message: fullError)
                 }
             }
         }
@@ -1578,21 +1657,20 @@ final class DownloadManager {
         return nil
     }
     
-    private func resolveErrorMessage(gid: String, initialTask: DownloadTask?) async -> String {
+    private func resolveDetailedError(gid: String, initialTask: DownloadTask?) async -> (String, String?) {
         if let direct = normalizedErrorMessage(initialTask?.errorMessage) {
-            return direct
+            return (direct, initialTask?.errorCode)
         }
         
-        // aria2 有时会先发 error 事件，稍后 tellStatus 才带上 errorMessage。
         for delay in [200, 400, 800] {
             try? await Task.sleep(for: .milliseconds(delay))
             if let remoteTask = try? await aria2Service?.tellStatus(gid: gid),
                let remoteMessage = normalizedErrorMessage(remoteTask.errorMessage) {
-                return remoteMessage
+                return (remoteMessage, remoteTask.errorCode)
             }
         }
         
-        return "未知错误".localized(for: language)
+        return ("未知错误".localized(for: language), nil)
     }
     
     private func normalizedErrorMessage(_ message: String?) -> String? {
@@ -1614,38 +1692,80 @@ final class DownloadManager {
         
         // 1. Resolve task details and options before removal
         let task = await resolveTaskForNotification(gid: gid)
-        guard let task, !task.uri.isEmpty else { return false }
+        
+        // Extract all unique URIs from the task and its files
+        var allUris = Set<String>()
+        if let taskUri = task?.uri, !taskUri.isEmpty {
+            allUris.insert(taskUri)
+        }
+        task?.files.forEach { file in
+            file.uris.forEach { uri in
+                if !uri.isEmpty { allUris.insert(uri) }
+            }
+        }
+        
+        let uris = Array(allUris)
+        guard let task, !uris.isEmpty else { 
+            Logger.error("DownloadManager: Cannot apply fallback for \(gid), no URIs available")
+            return false 
+        }
         
         // Fetch original options to preserve Browser UA, Cookies, etc.
         let originalOptions = (try? await service.getOption(gid: gid)) ?? [:]
         
+        // Preserve expected length for the next GID
+        let oldExpectedLength = task.expectedTotalLength ?? (task.totalLength > 1024 ? task.totalLength : nil)
+        
         do {
             invalidRangeFallbackAppliedGIDs.insert(gid)
             
-            // 2. THOROUGH REMOVAL from UI and Persistence
-            await removeTasks(gids: [gid], deleteFiles: false)
+            // 2. THOROUGH REMOVAL and FILE CLEANUP
+            // We MUST delete files because servers often written 23-byte HTML error pages.
+            // Keeping them leads to "Download aborted" on retry due to resume collisions.
+            
+            // Mark for transition
+            self.retryTransitionGIDs[gid] = "pending"
+            await removeTasks(gids: [gid], deleteFiles: true, keepInTasksWhileRetrying: true)
             
             // 3. WAIT a bit for cooldown
-            try? await Task.sleep(for: .seconds(2))
+            try? await Task.sleep(for: .seconds(1.5))
             
             // 4. Merge FALLBACK options into ORIGINAL options
-            // We only override the network settings that cause the Range error
             var finalOptions: [String: Any] = originalOptions
+            
+            // [CRITICAL] FIX Header format: Aria2 RPC expects [String] for headers, 
+            // but getOption returns a single \n-delimited String.
+            if let headerStr = finalOptions["header"] as? String {
+                finalOptions["header"] = headerStr.components(separatedBy: "\n").filter { !$0.isEmpty }
+            }
+            
+            // Remove options that might cause conflicts during a fresh retry
+            let optionsToRemove = [
+                "gid", "pause", "pause-metadata", "select-file", "index-out", 
+                "checksum", "piece-length", "bitfield"
+            ]
+            optionsToRemove.forEach { finalOptions.removeValue(forKey: $0) }
+            
             finalOptions["dir"] = task.dir
             finalOptions["out"] = task.name
             finalOptions["auto-file-renaming"] = "false"
             finalOptions["max-connection-per-server"] = "1"
             finalOptions["split"] = "1"
-            finalOptions["min-split-size"] = "100M"
+            finalOptions["continue"] = "false" // Force fresh start to avoid range issues
+            finalOptions["allow-overwrite"] = "true"
             
-            // NOTE: We do NOT set a hardcoded Chrome UA here anymore. 
-            // If the original task from extension had one (in 'user-agent' or 'header'), it's already in finalOptions.
+            Logger.info("DownloadManager: Re-adding task with \(uris.count) URIs and \(finalOptions.count) options")
+            let newGid = try await service.addUri(uris: uris, options: finalOptions)
             
-            let newGid = try await service.addUri(uris: [task.uri], options: finalOptions)
+            // Link old GID to new GID to complete the transition in refreshTasks
+            self.retryTransitionGIDs[gid] = newGid
             
-            invalidRangeFallbackAppliedGIDs.insert(newGid)
+            if let expectation = oldExpectedLength {
+                self.pendingExpectedLengths[newGid] = expectation
+                Logger.info("DownloadManager: Registered pending expectation for \(newGid): \(expectation) bytes")
+            }
             
-            Logger.info("DownloadManager: Re-added task \(task.name) as \(newGid) while PRESERVING original headers/UA")
+            Logger.info("DownloadManager: Re-added task \(task.name) as \(newGid) with \(uris.count) URIs")
             return true
         } catch {
             Logger.error("DownloadManager: Failed to apply invalid-range fallback for gid \(gid): \(error.localizedDescription)")
@@ -1673,14 +1793,19 @@ final class DownloadManager {
             "x-goog-signature"
         ])
         
-        return (components.queryItems ?? []).contains { item in
+        let hasSignedQuery = (components.queryItems ?? []).contains { item in
             signedQueryKeys.contains(item.name.lowercased())
         }
+        
+        let isGitHubRelease = components.host == "github.com" && components.path.contains("/releases/download/")
+        
+        return hasSignedQuery || isGitHubRelease
     }
     
     private func applyConservativeHTTPOptions(_ options: inout [String: Any]) {
-        options["max-connection-per-server"] = "1"
-        options["split"] = "1"
+        // GitHub release AWS/S3 links will 400/403 if too many concurrent connections are opened for the same file.
+        options["max-connection-per-server"] = "2"
+        options["split"] = "2"
         options["min-split-size"] = "100M"
     }
     
@@ -1821,7 +1946,15 @@ final class DownloadManager {
         // 2. Speed and ETA
         // displayStatus and eta are now methods, no longer pre-calculated as properties
         task.formattedStatusText = task.displayStatus(for: language)
-        if task.isSeeding {
+        
+        let isRetrying = self.retryTransitionGIDs.keys.contains(task.id)
+        
+        if isRetrying {
+            task.formattedStatusText = "自动重试中...".localized(for: language)
+            task.formattedDownloadSpeed = "0 KB/s"
+            task.formattedETA = "--"
+            task.formattedStatusLine = "\(task.formattedSizeText) · \(task.formattedStatusText)"
+        } else if task.isSeeding {
             // Seeding: Show upload speed instead of download
             let uploadSpeed = formatter.string(fromByteCount: task.uploadSpeed) + "/s"
             task.formattedDownloadSpeed = uploadSpeed

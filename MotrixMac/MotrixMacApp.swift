@@ -279,6 +279,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         // Trigger firewall/network permission check
         triggerNetworkPermissionCheck()
+        
+        // Initial clear if launched into foreground
+        if NSApp.isActive {
+            clearDockCompletedBadge()
+        }
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        clearDockCompletedBadge()
     }
 
     /// Triggers a dummy network listener to force macOS to display the Firewall/Local Network permission prompt
@@ -391,6 +400,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     func incrementDockCompletedBadge(by count: Int = 1) {
         guard count > 0 else { return }
+        
+        // mainstream behavior: don't badge if app is already active
+        if NSApp.isActive {
+            return
+        }
+        
         pendingDockBadgeCount += count
         UserDefaults.standard.set(pendingDockBadgeCount, forKey: dockBadgeCountKey)
         applyDockBadge()
@@ -400,6 +415,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard pendingDockBadgeCount > 0 else { return }
         pendingDockBadgeCount = 0
         UserDefaults.standard.set(0, forKey: dockBadgeCountKey)
+        UserDefaults.standard.synchronize()
         applyDockBadge()
     }
     
@@ -467,6 +483,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        // mainstream behavior: clear badge when dock icon is clicked
+        clearDockCompletedBadge()
+        
         if !flag {
             // No windows visible, trigger opening and navigation reset to Home
             DispatchQueue.main.async {

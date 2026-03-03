@@ -24,17 +24,25 @@ run_step() {
 
 kill_all_instances() {
   log "==> Killing existing ${APP_NAME} instances"
-  # Phase 1: Request termination
-  for _ in {1..10}; do
+  
+  # Phase 1: Graceful termination (+ handle both process name and path pattern)
+  for _ in {1..5}; do
     pkill -x "${APP_NAME}" 2>/dev/null || true
-    if ! pgrep -x "${APP_NAME}" >/dev/null 2>&1; then
+    pkill -f "${APP_PROCESS_PATTERN}" 2>/dev/null || true
+    
+    if ! pgrep -f "${APP_PROCESS_PATTERN}" >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.2
+    sleep 0.3
   done
-  # Phase 2: Force kill
-  pkill -9 -x "${APP_NAME}" 2>/dev/null || true
-  sleep 0.5
+
+  # Phase 2: Force termination if still alive
+  if pgrep -f "${APP_PROCESS_PATTERN}" >/dev/null 2>&1; then
+    log "WARNING: ${APP_NAME} did not exit gracefully, forcing kill..."
+    pkill -9 -x "${APP_NAME}" 2>/dev/null || true
+    pkill -9 -f "${APP_PROCESS_PATTERN}" 2>/dev/null || true
+    sleep 1
+  fi
 }
 
 # --- Execution ---
@@ -47,15 +55,16 @@ kill_all_instances
 
 # 3) Launch
 log "==> Launching app"
-if ! open "${APP_BUNDLE}"; then
-  fail "Failed to launch ${APP_BUNDLE}"
-fi
+# Use direct binary execution instead of 'open' to keep stdout in terminal
+"${APP_BUNDLE}/Contents/MacOS/${APP_NAME}" &
+APP_PID=$!
+log "Launched ${APP_NAME} (PID: ${APP_PID})"
 
 # 4) Verify
 log "==> Verifying application state"
 for _ in {1..10}; do
-  if pgrep -x "${APP_NAME}" >/dev/null 2>&1; then
-    log "OK: ${APP_NAME} is running (PID: $(pgrep -x "${APP_NAME}"))"
+  if ps -p ${APP_PID} > /dev/null; then
+    log "OK: ${APP_NAME} is running"
     log "==> All development loop steps completed successfully."
     exit 0
   fi

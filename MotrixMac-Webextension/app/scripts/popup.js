@@ -2,7 +2,13 @@ import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { Global } from '@emotion/react';
 import styled from '@emotion/styled';
-import { IconButton, Switch, LinearProgress, ThemeProvider, createTheme } from '@mui/material';
+import {
+  IconButton,
+  Switch,
+  LinearProgress,
+  ThemeProvider,
+  createTheme,
+} from '@mui/material';
 import SettingsIcon from '@mui/icons-material/Settings';
 import PowerSettingsNewIcon from '@mui/icons-material/PowerSettingsNew';
 import BlockIcon from '@mui/icons-material/Block';
@@ -37,7 +43,11 @@ const Title = styled.h1`
   font-size: 16px;
   font-weight: 700;
   margin: 0;
-  background: linear-gradient(135deg, var(--text-primary), var(--text-secondary));
+  background: linear-gradient(
+    135deg,
+    var(--text-primary),
+    var(--text-secondary)
+  );
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   letter-spacing: -0.5px;
@@ -61,14 +71,15 @@ const StatusCard = styled.div`
 const StatusText = styled.div`
   font-size: 15px;
   font-weight: 600;
-  color: ${props => props.active ? 'var(--success-color)' : 'var(--text-secondary)'};
+  color: ${(props) =>
+    props.active ? 'var(--success-color)' : 'var(--text-secondary)'};
   display: flex;
   align-items: center;
   gap: 12px;
-  
+
   & svg {
-      display: block;
-      margin-bottom: 2px;
+    display: block;
+    margin-bottom: 2px;
   }
 `;
 
@@ -107,7 +118,7 @@ function PopupView() {
 
   useEffect(() => {
     // Initial Load
-    browser.storage.sync.get(['extensionStatus', 'theme']).then(res => {
+    browser.storage.sync.get(['extensionStatus', 'theme']).then((res) => {
       setExtensionStatus(res.extensionStatus !== false);
       applyTheme(res.theme || 'system');
     });
@@ -134,7 +145,10 @@ function PopupView() {
 
   const addToBlacklist = async () => {
     try {
-      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+      const tabs = await browser.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
       if (tabs.length === 0 || !tabs[0].url) return;
 
       const url = new URL(tabs[0].url);
@@ -150,12 +164,14 @@ function PopupView() {
         await browser.storage.sync.set({ blacklist: newList });
         setFeedback({
           open: true,
-          message: browser.i18n.getMessage('blacklistAddedSuccess', [hostname])
+          message: browser.i18n.getMessage('blacklistAddedSuccess', [hostname]),
         });
       } else {
         setFeedback({
           open: true,
-          message: browser.i18n.getMessage('blacklistAlreadyExists', [hostname])
+          message: browser.i18n.getMessage('blacklistAlreadyExists', [
+            hostname,
+          ]),
         });
       }
     } catch (e) {
@@ -193,7 +209,7 @@ function PopupView() {
 
         <ActionButton onClick={addToBlacklist}>
           <BlockIcon style={{ fontSize: 18, color: 'var(--text-secondary)' }} />
-          {i18n('addToBlacklist') || "Add current site to Blacklist"}
+          {i18n('addToBlacklist') || 'Add current site to Blacklist'}
         </ActionButton>
 
         <Snackbar
@@ -202,12 +218,14 @@ function PopupView() {
           onClose={handleCloseFeedback}
           anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         >
-          <Alert onClose={handleCloseFeedback} severity="success" sx={{ width: '100%', fontSize: '12px' }}>
+          <Alert
+            onClose={handleCloseFeedback}
+            severity="success"
+            sx={{ width: '100%', fontSize: '12px' }}
+          >
             {feedback.message}
           </Alert>
         </Snackbar>
-
-
       </PopupContainer>
     </ThemeProvider>
   );

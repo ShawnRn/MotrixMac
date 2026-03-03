@@ -99,6 +99,11 @@ final class Logger: ObservableObject {
             break
         }
         
+        // Print for Debug Console
+        if level != .off {
+            print(fullMessage)
+        }
+        
         // File Log
         if let fileHandle = fileHandle, level != .off {
             let timestamp = DateFormatter.string(from: Date())
@@ -128,5 +133,12 @@ final class Logger: ObservableObject {
     
     static func error(_ message: String, file: String = #file, function: String = #function, line: Int = #line) {
         shared.log(message, level: .error, file: file, function: function, line: line)
+    }
+    
+    /// 用于不带前缀的纯文本打印，同样受日志级别控制
+    static func rawPrint(_ message: String, level: LogLevel = .debug) {
+        if level.rawValue >= shared.level.rawValue {
+            print(message)
+        }
     }
 }

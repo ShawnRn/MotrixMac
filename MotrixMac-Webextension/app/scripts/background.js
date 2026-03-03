@@ -23,18 +23,28 @@ async function downloadAgent() {
 
   // Load active downloads from storage (Browser IDs)
   try {
-    const { activeDownloadsList = [] } = await browser.storage.local.get(['activeDownloadsList']);
+    const { activeDownloadsList = [] } = await browser.storage.local.get([
+      'activeDownloadsList',
+    ]);
     activeDownloads = new Set(activeDownloadsList);
-    logger.info(`Loaded ${activeDownloads.size} active browser downloads from storage`);
+    logger.info(
+      `Loaded ${activeDownloads.size} active browser downloads from storage`
+    );
   } catch (e) {
     logger.error('Error loading active downloads:', e);
   }
 
   // Setup history
   try {
-    const { history: oldHistory = [] } = await browser.storage.local.get(['history']);
+    const { history: oldHistory = [] } = await browser.storage.local.get([
+      'history',
+    ]);
     oldHistory.forEach((x) => {
-      if (x.status !== 'completed' && x.status !== 'error' && x.status !== 'deleted') {
+      if (
+        x.status !== 'completed' &&
+        x.status !== 'error' &&
+        x.status !== 'deleted'
+      ) {
         // If it was 'downloading', treat it as potentially active
       }
       history.set(x.gid, x);
@@ -44,7 +54,10 @@ async function downloadAgent() {
 
     // RESUMPTION LOGIC:
     // Resume monitoring for any Aria2 tasks that are 'downloading'
-    const config = await browser.storage.sync.get(['motrixAPIkey', 'motrixPort']);
+    const config = await browser.storage.sync.get([
+      'motrixAPIkey',
+      'motrixPort',
+    ]);
 
     // Default config if missing
     if (!config.motrixPort) config.motrixPort = 12800;
@@ -60,16 +73,14 @@ async function downloadAgent() {
       }
     }
     logger.info(`Resumed ${resumeCount} Aria2 tasks`);
-
   } catch (e) {
     logger.error('Error setting up history/resumption:', e);
   }
 
-
   // Helper function to save active downloads to storage
   const saveActiveDownloads = async () => {
     await browser.storage.local.set({
-      activeDownloadsList: Array.from(activeDownloads)
+      activeDownloadsList: Array.from(activeDownloads),
     });
   };
 
@@ -87,7 +98,10 @@ async function downloadAgent() {
 
   // Hide bottom bar (Legacy/Browser download support)
   const syncShelfState = async () => {
-    const { hideChromeBar, extensionStatus } = await browser.storage.sync.get(['hideChromeBar', 'extensionStatus']);
+    const { hideChromeBar, extensionStatus } = await browser.storage.sync.get([
+      'hideChromeBar',
+      'extensionStatus',
+    ]);
     // If extension is OFF, we should definitely show the shelf.
     // If extension is ON, we respect the hideChromeBar setting.
     if (extensionStatus === false) {
@@ -112,7 +126,10 @@ async function downloadAgent() {
       if (delta.state.current === 'in_progress') {
         addActiveDownload(delta.id);
         processDownload(delta.id);
-      } else if (delta.state.current === 'complete' || delta.state.current === 'interrupted') {
+      } else if (
+        delta.state.current === 'complete' ||
+        delta.state.current === 'interrupted'
+      ) {
         removeActiveDownload(delta.id);
       }
     }
@@ -127,7 +144,9 @@ async function downloadAgent() {
   const pendingDownloads = new Map();
 
   browser.downloads.onCreated.addListener(async function (downloadItem) {
-    logger.debug(`MotrixMac WebExtension: [onCreated] ID: ${downloadItem.id}, State: ${downloadItem.state}, URL: ${downloadItem.url}`);
+    logger.debug(
+      `MotrixMac WebExtension: [onCreated] ID: ${downloadItem.id}, State: ${downloadItem.state}, URL: ${downloadItem.url}`
+    );
 
     // Store download info for processing
     pendingDownloads.set(downloadItem.id, downloadItem);
@@ -145,22 +164,30 @@ async function downloadAgent() {
     }
 
     if (activeDownloads.has(downloadId)) {
-      logger.debug(`MotrixMac WebExtension: [processDownload] Skipping ID ${downloadId} (already being handled)`);
+      logger.debug(
+        `MotrixMac WebExtension: [processDownload] Skipping ID ${downloadId} (already being handled)`
+      );
       return;
     }
 
     // Check ignored
     if (ignoredDownloads.has(downloadId)) {
-      logger.debug(`MotrixMac WebExtension: [processDownload] Skipping ID ${downloadId} (ignored/blacklisted)`);
+      logger.debug(
+        `MotrixMac WebExtension: [processDownload] Skipping ID ${downloadId} (ignored/blacklisted)`
+      );
       return;
     }
 
     const downloadItem = pendingDownloads.get(downloadId);
     if (!downloadItem) {
-      logger.debug(`MotrixMac WebExtension: [processDownload] Skipping ID ${downloadId} (not in pendingDownloads)`);
+      logger.debug(
+        `MotrixMac WebExtension: [processDownload] Skipping ID ${downloadId} (not in pendingDownloads)`
+      );
       return;
     }
-    logger.info(`MotrixMac WebExtension: [processDownload] Processing ID ${downloadId}`);
+    logger.info(
+      `MotrixMac WebExtension: [processDownload] Processing ID ${downloadId}`
+    );
 
     // --- EARLY PAUSE ---
     // Pause immediately to stop browser from downloading data while we process.
@@ -168,7 +195,10 @@ async function downloadAgent() {
     try {
       await browser.downloads.pause(downloadId);
     } catch (e) {
-      logger.warn(`MotrixMac WebExtension: [processDownload] Early pause failed for ID ${downloadId} (may be already paused):`, e);
+      logger.warn(
+        `MotrixMac WebExtension: [processDownload] Early pause failed for ID ${downloadId} (may be already paused):`,
+        e
+      );
     }
 
     // Remove from pending to avoid double processing
@@ -213,12 +243,22 @@ async function downloadAgent() {
       const appName = browser.i18n.getMessage('appName');
       const shouldCheck = statuses[0]?.byExtensionName !== appName;
 
-      logger.debug(`MotrixMac WebExtension: [getAriaDownloader] ID: ${downloadId}, byExtensionName: ${statuses[0]?.byExtensionName}, appName: ${appName}, shouldCheck: ${shouldCheck}`);
+      logger.debug(
+        `MotrixMac WebExtension: [getAriaDownloader] ID: ${downloadId}, byExtensionName: ${statuses[0]?.byExtensionName}, appName: ${appName}, shouldCheck: ${shouldCheck}`
+      );
 
       // Extension is disabled
       if (shouldCheck && !result.extensionStatus) {
-        logger.info(`MotrixMac WebExtension: [getAriaDownloader] Extension is disabled in settings`);
-        return;
+        logger.info(
+          `MotrixMac WebExtension: [getAriaDownloader] Extension is disabled in settings`
+        );
+        try {
+          await browser.downloads.resume(downloadId);
+        } catch (e) {
+          console.warn('Resume failed', e);
+        }
+        ignoredDownloads.add(downloadId);
+        return 'IGNORE';
       }
       // File size is known and it is smaller than the minimum file size (in mb)
       if (
@@ -226,24 +266,35 @@ async function downloadAgent() {
         downloadItem.fileSize > 0 &&
         downloadItem.fileSize < result.minFileSize * 1024 * 1024
       ) {
-        logger.info(`MotrixMac WebExtension: [getAriaDownloader] File size (${downloadItem.fileSize}) is smaller than minFileSize (${result.minFileSize} MB)`);
-        return;
+        logger.info(
+          `MotrixMac WebExtension: [getAriaDownloader] File size (${downloadItem.fileSize}) is smaller than minFileSize (${result.minFileSize} MB)`
+        );
+        try {
+          await browser.downloads.resume(downloadId);
+        } catch (e) {
+          console.warn('Resume failed', e);
+        }
+        ignoredDownloads.add(downloadId);
+        return 'IGNORE';
       }
       // If url is on the blacklist then skip
       // If url or referrer is on the blacklist then skip
       if (
         shouldCheck &&
-        (result.blacklist || []).some((x) =>
-          downloadItem.url.includes(x) ||
-          (downloadItem.referrer && downloadItem.referrer.includes(x))
+        (result.blacklist || []).some(
+          (x) =>
+            downloadItem.url.includes(x) ||
+            (downloadItem.referrer && downloadItem.referrer.includes(x))
         )
       ) {
-        logger.info(`MotrixMac WebExtension: [getAriaDownloader] URL or Referrer is on the blacklist, resuming browser download`);
+        logger.info(
+          `MotrixMac WebExtension: [getAriaDownloader] URL or Referrer is on the blacklist, resuming browser download`
+        );
         // Critical: Resume so browser handles it natively
         try {
           await browser.downloads.resume(downloadId);
         } catch (e) {
-          console.warn("Resume failed", e);
+          console.warn('Resume failed', e);
         }
         ignoredDownloads.add(downloadId);
         return 'IGNORE';
@@ -260,13 +311,22 @@ async function downloadAgent() {
 
     getResult.then(async (result) => {
       // Default values if missing from storage
-      if (typeof result.extensionStatus === 'undefined') result.extensionStatus = true;
+      if (typeof result.extensionStatus === 'undefined')
+        result.extensionStatus = true;
       if (typeof result.motrixPort === 'undefined') result.motrixPort = 12800;
-      if (typeof result.minFileSize === 'undefined' || result.minFileSize === '') result.minFileSize = 0;
-      if (typeof result.enableNotifications === 'undefined') result.enableNotifications = true;
+      if (
+        typeof result.minFileSize === 'undefined' ||
+        result.minFileSize === ''
+      )
+        result.minFileSize = 0;
+      if (typeof result.enableNotifications === 'undefined')
+        result.enableNotifications = true;
       if (!result.blacklist) result.blacklist = [];
 
-      logger.info('MotrixMac WebExtension: Settings applied:', JSON.stringify(result));
+      logger.info(
+        'MotrixMac WebExtension: Settings applied:',
+        JSON.stringify(result)
+      );
 
       let downloader = await getDownloader(result);
 
@@ -296,7 +356,7 @@ async function downloadAgent() {
       // get icon of the file
       try {
         downloadItem.icon = await browser.downloads.getFileIcon(downloadId);
-      } catch (e) { }
+      } catch (e) {}
 
       try {
         logger.info('Starting download with MotrixMac...');
@@ -318,8 +378,8 @@ async function downloadAgent() {
             downloader = new BrowserDownloader();
             await downloader.handleStart(result, downloadItem, history);
           } else {
-            // Cancel logic... 
-            await browser?.downloads?.erase({ id: downloadId }).catch(() => { });
+            // Cancel logic...
+            await browser?.downloads?.erase({ id: downloadId }).catch(() => {});
             onError(error);
           }
         }
@@ -343,16 +403,22 @@ export function createMenuItem() {
         }
 
         if (showContextOption !== false) {
-          browser.contextMenus.create({
-            id: menuId,
-            title: browser.i18n.getMessage('downloadWithMotrix'),
-            visible: true,
-            contexts: ['link'],
-          }, () => {
-            if (browser.runtime.lastError) {
-              logger.warn('MotrixMac WebExtension: Context menu creation warning:', browser.runtime.lastError.message);
+          browser.contextMenus.create(
+            {
+              id: menuId,
+              title: browser.i18n.getMessage('downloadWithMotrix'),
+              visible: true,
+              contexts: ['link'],
+            },
+            () => {
+              if (browser.runtime.lastError) {
+                logger.warn(
+                  'MotrixMac WebExtension: Context menu creation warning:',
+                  browser.runtime.lastError.message
+                );
+              }
             }
-          });
+          );
           browser.contextMenus.onClicked.addListener(clickHandler);
         }
       });

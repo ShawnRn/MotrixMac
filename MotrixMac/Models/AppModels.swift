@@ -24,6 +24,8 @@ struct DownloadTask: Identifiable, Equatable, Codable, Sendable {
     var addedAt: Date
     var completedAt: Date? // [NEW] Track completion time for auto-delete
     var errorMessage: String?
+    var errorCode: String?
+    var expectedTotalLength: Int64?
     var bitfield: String?
     var downloadSpeedHistory: [Int64] = []
     
@@ -41,7 +43,7 @@ struct DownloadTask: Identifiable, Equatable, Codable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id, name, uri, dir, status, totalLength, completedLength
         case downloadSpeed, uploadSpeed, connections, numSeeders, numPieces
-        case infoHash, files, peers, trackers, addedAt, completedAt, errorMessage, bitfield
+        case infoHash, files, peers, trackers, addedAt, completedAt, errorMessage, errorCode, expectedTotalLength, bitfield
         case downloadSpeedHistory
     }
 
@@ -66,6 +68,8 @@ struct DownloadTask: Identifiable, Equatable, Codable, Sendable {
         addedAt = try container.decode(Date.self, forKey: .addedAt)
         completedAt = try container.decodeIfPresent(Date.self, forKey: .completedAt)
         errorMessage = try container.decodeIfPresent(String.self, forKey: .errorMessage)
+        errorCode = try container.decodeIfPresent(String.self, forKey: .errorCode)
+        expectedTotalLength = try container.decodeIfPresent(Int64.self, forKey: .expectedTotalLength)
         bitfield = try container.decodeIfPresent(String.self, forKey: .bitfield)
         downloadSpeedHistory = (try? container.decode([Int64].self, forKey: .downloadSpeedHistory)) ?? []
         
@@ -99,6 +103,8 @@ struct DownloadTask: Identifiable, Equatable, Codable, Sendable {
         try container.encode(addedAt, forKey: .addedAt)
         try container.encodeIfPresent(completedAt, forKey: .completedAt)
         try container.encodeIfPresent(errorMessage, forKey: .errorMessage)
+        try container.encodeIfPresent(errorCode, forKey: .errorCode)
+        try container.encodeIfPresent(expectedTotalLength, forKey: .expectedTotalLength)
         try container.encodeIfPresent(bitfield, forKey: .bitfield)
         try container.encode(downloadSpeedHistory, forKey: .downloadSpeedHistory)
     }
@@ -124,6 +130,8 @@ struct DownloadTask: Identifiable, Equatable, Codable, Sendable {
         addedAt: Date = Date(),
         completedAt: Date? = nil,
         errorMessage: String? = nil,
+        errorCode: String? = nil,
+        expectedTotalLength: Int64? = nil,
         bitfield: String? = nil,
         downloadSpeedHistory: [Int64] = []
     ) {
@@ -146,6 +154,8 @@ struct DownloadTask: Identifiable, Equatable, Codable, Sendable {
         self.addedAt = addedAt
         self.completedAt = completedAt
         self.errorMessage = errorMessage
+        self.errorCode = errorCode
+        self.expectedTotalLength = expectedTotalLength
         self.bitfield = bitfield
         self.downloadSpeedHistory = downloadSpeedHistory
         

@@ -15,14 +15,15 @@ fi
 PROJECT_DIR="/Users/shawnrain/MotrixMac"
 RELEASE_DIR="$PROJECT_DIR/releases"
 APPCAST_FILE="$PROJECT_DIR/appcast.xml"
-DMG_FILE="$RELEASE_DIR/MotrixMac_$VERSION.dmg"
+DMG_ARM64="$RELEASE_DIR/MotrixMac_${VERSION}_arm64.dmg"
+DMG_X86_64="$RELEASE_DIR/MotrixMac_${VERSION}_x86_64.dmg"
 # 定位签名工具
 SIGN_TOOL="/Users/shawnrain/Library/Developer/Xcode/DerivedData/MotrixMac-gqavjquvbfxvifcfxtigizyaxydi/SourcePackages/artifacts/sparkle/Sparkle/bin/sign_update"
 
 # 检查 DMG 是否存在
-if [ ! -f "$DMG_FILE" ]; then
-    echo "错误: 找不到 DMG 文件: $DMG_FILE"
-    echo "请先将导出的 DMG 放置在 $RELEASE_DIR 文件夹下，并确保文件名为 MotrixMac_$VERSION.dmg"
+if [ ! -f "$DMG_ARM64" ] || [ ! -f "$DMG_X86_64" ]; then
+    echo "错误: 找不到 DMG 文件。"
+    echo "请确保 $DMG_ARM64 和 $DMG_X86_64 都存在于 $RELEASE_DIR 文件夹下"
     exit 1
 fi
 
@@ -40,25 +41,28 @@ fi
 
 echo "提取到的 Build 号 (sparkle:version): $SPARKLE_VERSION"
 
-# 3. 生成签名
-echo "正在生成 EdDSA 签名..."
-SIGNATURE=$($SIGN_TOOL "$DMG_FILE")
-if [ -z "$SIGNATURE" ]; then
+# 3. 生成签名与获取大⼩
+echo "正在为双架构生成 EdDSA 签名..."
+SIG_ARM64=$($SIGN_TOOL "$DMG_ARM64")
+SIG_X86_64=$($SIGN_TOOL "$DMG_X86_64")
+
+if [ -z "$SIG_ARM64" ] || [ -z "$SIG_X86_64" ]; then
     echo "错误: 签名生成失败，请确保 Sparkle 私钥已配置。"
     exit 1
 fi
-echo "签名: $SIGNATURE"
 
-# 4. 获取文件大小和日期
-FILE_SIZE=$(stat -f%z "$DMG_FILE")
+SIZE_ARM64=$(stat -f%z "$DMG_ARM64")
+SIZE_X86_64=$(stat -f%z "$DMG_X86_64")
 PUB_DATE=$(date -R)
-DOWNLOAD_URL="https://github.com/ShawnRn/MotrixMac/releases/download/v$VERSION/MotrixMac_$VERSION.dmg"
 
-echo "文件大小: $FILE_SIZE"
+URL_ARM64="https://github.com/ShawnRn/MotrixMac/releases/download/v$VERSION/MotrixMac_${VERSION}_arm64.dmg"
+URL_X86_64="https://github.com/ShawnRn/MotrixMac/releases/download/v$VERSION/MotrixMac_${VERSION}_x86_64.dmg"
+
+echo "arm64 签名: $SIG_ARM64, 大小: $SIZE_ARM64"
+echo "x86_64 签名: $SIG_X86_64, 大小: $SIZE_X86_64"
 echo "发布日期: $PUB_DATE"
 
-# 5. 更新 appcast.xml (简单替换方案，假设只有一个 item)
-# 如果需要多版本记录，这里可以改为更复杂的 XML 编辑
+# 5. 更新 appcast.xml (简单替换方案，单 item 多 enclosure)
 echo "正在更新 appcast.xml..."
 
 cat <<EOF > "$APPCAST_FILE"
@@ -72,13 +76,15 @@ cat <<EOF > "$APPCAST_FILE"
             <sparkle:version>${SPARKLE_VERSION//./}</sparkle:version>
             <sparkle:shortVersionString>$VERSION</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>15.6</sparkle:minimumSystemVersion>
-            <enclosure url="$DOWNLOAD_URL" type="application/octet-stream" $SIGNATURE/>
+            <enclosure url="$URL_ARM64" length="$SIZE_ARM64" type="application/octet-stream" sparkle:os="macos" sparkle:nativeArchitecture="arm64" $SIG_ARM64/>
+            <enclosure url="$URL_X86_64" length="$SIZE_X86_64" type="application/octet-stream" sparkle:os="macos" sparkle:nativeArchitecture="x86_64" $SIG_X86_64/>
         </item>
     </channel>
 </rss>
 EOF
 
-# 5. 完成提示
+# 6. 完成提示
 echo "--- 准备完成！ ---"
-echo "appcast.xml 已更新，请后续手动进行 git 提交与推送。"
-echo "请前往 GitHub 创建版本号为 v$VERSION 的 Release 并上传 $DMG_FILE"
+echo "appcast.xml 已更新。"
+echo "请执行:"
+echo "gh release create \"v\$VERSION\" \"$DMG_ARM64\" \"$DMG_X86_64\" --title \"MotrixMac \$VERSION\" --notes \"请从 AboutView 同步更新日志\""

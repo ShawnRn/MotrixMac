@@ -449,8 +449,6 @@ actor Aria2Service {
                 return nil
             }
             switch errorCode {
-            case "8":
-                return "Invalid range header (server may not support resumed ranges)"
             default:
                 return "aria2 error code \(errorCode)"
             }
@@ -539,7 +537,9 @@ actor Aria2Service {
             peers: peers,
             trackers: trackers,
             addedAt: Date(),  // Would need to track this separately
+            completedAt: nil,
             errorMessage: errorMessage,
+            errorCode: errorCode,
             bitfield: dict["bitfield"] as? String
         )
     }

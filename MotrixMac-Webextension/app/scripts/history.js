@@ -76,7 +76,9 @@ function HistoryView() {
                 {el.status === 'completed' ? (
                   <IconButton
                     variant="outlined"
-                    onClick={() => browser.tabs.create({ url: 'motrixmac://show' })}
+                    onClick={() =>
+                      browser.tabs.create({ url: 'motrixmac://show' })
+                    }
                   >
                     <FolderIcon />
                   </IconButton>

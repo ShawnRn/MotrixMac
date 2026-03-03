@@ -64,8 +64,13 @@
 > 如果在 GitHub Release 创建并上传 DMG 之前就推送了包含新版本信息的 `appcast.xml`，会导致用户在更新时因为找不到文件而报错。
 
 1. **更新代码并推送 (不包含 `appcast.xml`)**：提交业务修改和版本号更新，推送到 GitHub。
-2. **创建 GitHub Release**：手动或通过 `gh` CLI 创建 Release，并上传生成的 `MotrixMac_x.x.x.dmg`。
-3. **运行发布脚本更新本地 `appcast.xml`**：运行 `./scripts/release.sh`。
+2. **创建 GitHub Release**：使用 `gh` CLI 读取本地打包好的 DMG 并发布。例如：
+   ```bash
+   gh release create "v$VERSION" "releases/MotrixMac_$VERSION.dmg" \
+     --title "MotrixMac $VERSION" \
+     --notes "请从 AboutView 同步最新的更新日志"
+   ```
+3. **运行发布脚本更新本地 `appcast.xml`**：运行 `./scripts/release.sh $VERSION`。
 4. **单独推送 `appcast.xml` (最后一步)**：只有在确认 Release 已发布且链接可访问后，再 `git commit` 并 `push` 这一单个文件。
 
 ### 版本号一致性
