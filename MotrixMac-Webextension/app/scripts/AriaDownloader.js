@@ -96,9 +96,10 @@ export default class AriaDownloader {
       // Initial connection attempt (app might already be running)
       try {
         console.log(`MotrixMac WebExtension: [addDownloadToMotrixMac] Checking initial connectivity...`);
-        const openPromise = aria2.open();
+        const aria2Ping = new Aria2(options);
+        const openPromise = aria2Ping.open().then(() => aria2Ping.close().catch(() => { }));
         const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Initial connection timeout')), 1000)
+          setTimeout(() => reject(new Error('Initial connection timeout')), 3000)
         );
         await Promise.race([openPromise, timeoutPromise]);
         console.log('MotrixMac WebExtension: App is already running.');
@@ -131,10 +132,10 @@ export default class AriaDownloader {
     }
 
     let params = {
-      'remote-time': 'true',
+      'remote-time': 'false',
       'check-certificate': 'false',
-      'split': (result.defaultConnections || 128).toString(),
-      'max-connection-per-server': (result.defaultConnections || 128).toString(),
+      'split': (result.defaultConnections || 16).toString(),
+      'max-connection-per-server': (result.defaultConnections || 16).toString(),
       'min-split-size': '1M'
     };
 

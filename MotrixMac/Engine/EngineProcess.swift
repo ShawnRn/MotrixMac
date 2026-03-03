@@ -122,7 +122,14 @@ class EngineProcess: ObservableObject {
         pipe.fileHandleForReading.readabilityHandler = { handle in
             let data = handle.availableData
             if let str = String(data: data, encoding: .utf8), !str.isEmpty {
-                print("aria2-stderr: \(str.trimmingCharacters(in: .whitespacesAndNewlines))")
+                let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    if Logger.shared.level == .debug {
+                        Logger.debug("aria2: \n\(trimmed)")
+                    } else if trimmed.contains("ERROR") || trimmed.contains("Exception") {
+                        Logger.error("aria2: \n\(trimmed)")
+                    }
+                }
             }
         }
         
@@ -382,7 +389,7 @@ class EngineProcess: ObservableObject {
 
         // User Agent
         // Use custom UA if set, otherwise default to MotrixMac/Version
-        let defaultUA = "MotrixMac/\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")"
+        let defaultUA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 MotrixMac/\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")"
         let userAgent = UserDefaults.standard.string(forKey: "userAgent") ?? defaultUA
         
         UserDefaults.standard.synchronize()
@@ -399,34 +406,28 @@ rpc-save-upload-metadata=true
 
 # --- Network ---
 async-dns=\(enableAsyncDNS)
-enable-dht=true
-dht-listen-port=6881-6999
-listen-port=6881-6999
 disable-ipv6=\(!enableIPv6)
 all-proxy=\(allProxy)
 
-# 超时设置 - 激进剔除慢连接以解决尾段长尾效应
+# 超时设置
 connect-timeout=5
-timeout=5
+timeout=30
 max-tries=0
 retry-wait=2
 
-# 速度底线 - 对于假死或严重拖慢整体的连接直接断开，交由其他空闲线程重试
-lowest-speed-limit=10K
 
 # --- Downloads ---
 max-concurrent-downloads=\(maxConcurrent > 0 ? maxConcurrent : 5)
 split=\(defaultConnections > 0 ? defaultConnections : 64)
 max-connection-per-server=\(defaultConnections > 0 ? defaultConnections : 64)
-min-split-size=16K
-piece-length=16K
+min-split-size=1M
 enable-http-pipelining=true
 enable-http-keep-alive=true
 max-download-limit=\(formatSpeedLimit(maxDownloadSpeed, unit: downloadSpeedUnit))
 max-upload-limit=\(formatSpeedLimit(maxUploadSpeed, unit: uploadSpeedUnit))
 
 # --- Disk IO ---
-file-allocation=falloc
+file-allocation=none
 disk-cache=64M
 continue=\(continueDownload)
 auto-file-renaming=\(autoRename)
@@ -437,8 +438,8 @@ save-session-interval=60
 force-save=false
 
 # --- Behavior ---
-# Disable automatic torrent following (download the .torrent file itself, don't start the task)
-follow-torrent=false
+# Enable automatic torrent following so .torrent URLs sent from browser extension are parsed
+follow-torrent=true
 
 # --- BitTorrent 策略 ---
 user-agent=\(userAgent)
@@ -456,9 +457,7 @@ dht-file-path=\(dhtFilePath)
 listen-port=\(btPort > 0 ? btPort : 16881)
 dht-listen-port=\(btPort > 0 ? btPort : 16881)
 dht-entry-point=router.bittorrent.com:6881
-dht-entry-point=router.utorrent.com:6881
-dht-entry-point=dht.transmissionbt.com:6881
-dht-entry-point=67.215.246.10:6881
+dht-entry-point6=router.bittorrent.com:6881
 
 # Advanced
 bt-enable-lpd=\(enableLpd)
@@ -472,8 +471,8 @@ seed-ratio=\(btContinuousSeeding ? "0" : String(format: "%.1f", seedRatio))
 seed-time=\(btContinuousSeeding ? "0" : String(seedTime))
 
 # --- Debug Logging ---
-console-log-level=warn
-log-level=warn
+console-log-level=\(Logger.shared.level == .debug ? "debug" : "warn")
+log-level=\(Logger.shared.level == .debug ? "debug" : "warn")
 """
         
         if !combinedTrackers.isEmpty {
@@ -672,12 +671,11 @@ log-level=warn
             "--rpc-listen-all=false",
             "--enable-rpc=true",
             "--rpc-save-upload-metadata=true",
-            "--check-certificate=false", // Disable strict SSL check to prevent handshake failures
             "--rpc-allow-origin-all=true",
             
             // [Critical Fix] Disable debug logging to prevent UI freeze caused by log flooding
-            "--console-log-level=warn",
-            "--log-level=warn"
+            "--console-log-level=\(Logger.shared.level == .debug ? "debug" : "warn")",
+            "--log-level=\(Logger.shared.level == .debug ? "debug" : "warn")"
         ]
     }
     
