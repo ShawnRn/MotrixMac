@@ -35,6 +35,7 @@ enum LogLevel: Int, CaseIterable, Identifiable, CustomStringConvertible {
 
 final class Logger: ObservableObject {
     static let shared = Logger()
+    private static let maxLogFileSize = 20 * 1024 * 1024
     
     @Published var level: LogLevel {
         didSet {
@@ -63,6 +64,7 @@ final class Logger: ObservableObject {
             
             let fileUrl = logDir.appendingPathComponent("app.log")
             self.logFileURL = fileUrl
+            Self.rotateLogFileIfNeeded(at: fileUrl)
             
             if !FileManager.default.fileExists(atPath: fileUrl.path) {
                 FileManager.default.createFile(atPath: fileUrl.path, contents: nil)
@@ -117,6 +119,21 @@ final class Logger: ObservableObject {
     
     deinit {
         try? fileHandle?.close()
+    }
+
+    private static func rotateLogFileIfNeeded(at fileURL: URL) {
+        let fileManager = FileManager.default
+        guard
+            let attributes = try? fileManager.attributesOfItem(atPath: fileURL.path),
+            let size = attributes[.size] as? NSNumber,
+            size.int64Value > Int64(maxLogFileSize)
+        else {
+            return
+        }
+
+        let rotatedURL = fileURL.deletingLastPathComponent().appendingPathComponent("app.log.1")
+        try? fileManager.removeItem(at: rotatedURL)
+        try? fileManager.moveItem(at: fileURL, to: rotatedURL)
     }
     
     static func debug(_ message: String, file: String = #file, function: String = #function, line: Int = #line) {

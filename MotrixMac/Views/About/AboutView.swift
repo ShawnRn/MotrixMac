@@ -38,6 +38,16 @@ struct AboutView: View {
     ]
     @State private var changelogs: [ChangelogItem] = [
         ChangelogItem(
+            version: "1.2.4",
+            date: "2026-05-18",
+            changes: [
+                "修复了长时间使用后新增下载任务可能不显示的问题。",
+                "修复了空白搜索条件导致列表只显示部分已完成任务的问题。",
+                "优化了 aria2 日志级别与日志轮转，降低长时间运行后的卡顿风险。",
+                "优化了新增任务后的会话保存机制，提升重启后的任务恢复稳定性。"
+            ]
+        ),
+        ChangelogItem(
             version: "1.2.2",
             date: "2026-02-24",
             changes: [

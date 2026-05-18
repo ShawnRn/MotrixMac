@@ -467,12 +467,12 @@ bt-save-metadata=\(btSaveMetadata)
 bt-detach-seed-only=false
 bt-tracker-connect-timeout=20
 bt-prioritize-piece=head=5M,tail=5M
-seed-ratio=\(btContinuousSeeding ? "0" : String(format: "%.1f", seedRatio))
-seed-time=\(btContinuousSeeding ? "0" : String(seedTime))
+seed-ratio=\(btContinuousSeeding ? "100000.0" : String(format: "%.1f", seedRatio))
+seed-time=\(btContinuousSeeding ? "525600" : String(seedTime))
 
 # --- Debug Logging ---
-console-log-level=\(Logger.shared.level == .debug ? "debug" : "warn")
-log-level=\(Logger.shared.level == .debug ? "debug" : "warn")
+console-log-level=\(Logger.shared.level == .debug ? "notice" : "warn")
+log-level=\(Logger.shared.level == .debug ? "notice" : "warn")
 """
         
         if !combinedTrackers.isEmpty {
@@ -673,9 +673,9 @@ log-level=\(Logger.shared.level == .debug ? "debug" : "warn")
             "--rpc-save-upload-metadata=true",
             "--rpc-allow-origin-all=true",
             
-            // [Critical Fix] Disable debug logging to prevent UI freeze caused by log flooding
-            "--console-log-level=\(Logger.shared.level == .debug ? "debug" : "warn")",
-            "--log-level=\(Logger.shared.level == .debug ? "debug" : "warn")"
+            // Keep aria2 chatty logs out of the app log even when MotrixMac itself is in debug mode.
+            "--console-log-level=\(Logger.shared.level == .debug ? "notice" : "warn")",
+            "--log-level=\(Logger.shared.level == .debug ? "notice" : "warn")"
         ]
     }
     

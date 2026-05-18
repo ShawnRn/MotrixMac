@@ -1,10 +1,12 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # MotrixMac Sparkle 自动化发布脚本
 # 用法: ./scripts/release.sh <版本号>
 # 示例: ./scripts/release.sh 1.0.7
 
-VERSION=$1
+set -euo pipefail
+
+VERSION=${1:-}
 
 if [ -z "$VERSION" ]; then
     echo "错误: 请提供版本号 (例如: 1.0.7)"
@@ -12,13 +14,20 @@ if [ -z "$VERSION" ]; then
 fi
 
 # 1. 配置路径
-PROJECT_DIR="/Users/shawnrain/MotrixMac"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RELEASE_DIR="$PROJECT_DIR/releases"
 APPCAST_FILE="$PROJECT_DIR/appcast.xml"
 DMG_ARM64="$RELEASE_DIR/MotrixMac_${VERSION}_arm64.dmg"
 DMG_X86_64="$RELEASE_DIR/MotrixMac_${VERSION}_x86_64.dmg"
-# 定位签名工具
-SIGN_TOOL="/Users/shawnrain/Library/Developer/Xcode/DerivedData/MotrixMac-gqavjquvbfxvifcfxtigizyaxydi/SourcePackages/artifacts/sparkle/Sparkle/bin/sign_update"
+# 定位签名工具。允许通过环境变量覆盖，默认从当前 DerivedData 中查找。
+SIGN_TOOL="${SIGN_TOOL:-}"
+if [ -z "$SIGN_TOOL" ]; then
+    SIGN_TOOL=$(find "$HOME/Library/Developer/Xcode/DerivedData" -path "*/SourcePackages/artifacts/sparkle/Sparkle/bin/sign_update" -type f 2>/dev/null | head -n 1 || true)
+fi
+if [ -z "$SIGN_TOOL" ] || [ ! -x "$SIGN_TOOL" ]; then
+    echo "错误: 找不到 Sparkle sign_update。请先构建项目或设置 SIGN_TOOL=/path/to/sign_update"
+    exit 1
+fi
 
 # 检查 DMG 是否存在
 if [ ! -f "$DMG_ARM64" ] || [ ! -f "$DMG_X86_64" ]; then

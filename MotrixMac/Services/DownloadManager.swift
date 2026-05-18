@@ -1003,6 +1003,7 @@ final class DownloadManager {
         finalOptions["follow-metalink"] = "false"
         
         let gid = try await service.addUri(uris: [finalUri], options: finalOptions)
+        try? await service.saveSession()
         
         // Ensure user gets immediate feedback when a task is added.
         if !self.notifiedStartedGIDs.contains(gid) {
@@ -1162,6 +1163,7 @@ final class DownloadManager {
         finalOptions["bt-detach-seed-only"] = "false"
 
         let gid = try await service.addTorrent(torrent: base64, options: finalOptions)
+        try? await service.saveSession()
         
         if !self.notifiedStartedGIDs.contains(gid) {
             self.notifiedStartedGIDs.insert(gid)
@@ -2068,10 +2070,11 @@ final class DownloadManager {
             }
         }
 
-        if searchText.isEmpty {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if query.isEmpty {
             self.filteredTasks = sorted
         } else {
-            self.filteredTasks = sorted.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+            self.filteredTasks = sorted.filter { $0.name.localizedCaseInsensitiveContains(query) }
         }
     }
 }

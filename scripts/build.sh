@@ -59,7 +59,7 @@ for TARGET_ARCH in "arm64" "x86_64"; do
             -project "${PROJECT_NAME}.xcodeproj" \
             -scheme "${SCHEME}" \
             -configuration "${XCODE_CONF}" \
-            -destination "generic/platform=macOS,arch=${TARGET_ARCH}" \
+            -destination "generic/platform=macOS" \
             -scmProvider xcode \
             MARKETING_VERSION="${MARKETING_VERSION}" \
             CURRENT_PROJECT_VERSION="${BUILD_NUMBER}" \
