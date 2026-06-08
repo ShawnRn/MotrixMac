@@ -190,7 +190,7 @@ final class DownloadManager {
 
     // MARK: - Connection
 
-    func connect() async {
+    func connect(isSilent: Bool = false) async {
         // Prevent multiple connections
         // If we are already connected, just perform a health check
         if isConnected {
@@ -228,7 +228,9 @@ final class DownloadManager {
                 await MainActor.run {
                     self.connectionError = engine.lastErrorMessage ?? "引擎启动失败"
                     self.isConnected = false
-                    self.needsRepair = true
+                    if !isSilent {
+                        self.needsRepair = true
+                    }
                 }
                 return
             }
@@ -278,10 +280,14 @@ final class DownloadManager {
                     await MainActor.run {
                         self.connectionError = error.localizedDescription
                         self.isConnected = false
-                        self.needsRepair = true // Mark for global alert
+                        if !isSilent {
+                            self.needsRepair = true // Mark for global alert
+                        }
                     }
-                    await MainActor.run {
-                        aria2Process?.state = .failed
+                    if !isSilent {
+                        await MainActor.run {
+                            aria2Process?.state = .failed
+                        }
                     }
                 } else {
                     // Wait before retrying - FAST RETRY
@@ -627,9 +633,16 @@ final class DownloadManager {
                     }
                 }
         } catch {
-            if let rpcError = error as? Aria2Error {
-                if case .rpcError(let msg) = rpcError {
-                    self.lastRpcError = msg
+            await MainActor.run {
+                self.isConnected = false
+                if let rpcError = error as? Aria2Error {
+                    if case .rpcError(let msg) = rpcError {
+                        self.lastRpcError = msg
+                    } else {
+                        self.connectionError = rpcError.localizedDescription
+                    }
+                } else {
+                    self.connectionError = error.localizedDescription
                 }
             }
             print("DownloadManager: Failed to refresh tasks: \(error)")
@@ -1472,14 +1485,24 @@ final class DownloadManager {
                 // Check cancellation at start of loop
                 // PAUSE loop if engine needs repair to avoid spamming timeouts
                 if !needsRepair {
-                    await refreshTasks()
+                    if !isConnected {
+                        print("DownloadManager: Connection lost. Attempting silent reconnect...")
+                        await connect(isSilent: true)
+                    } else {
+                        await refreshTasks()
+                    }
                 }
 
-                // Adaptive polling:
-                // If there are active downloads/tasks, refresh faster (1s)
-                // If idle, refresh slower (3s) to save CPU
-                let hasActiveTasks = !activeDownloads.isEmpty || !tasks.filter({ $0.status == "waiting" }).isEmpty
-                let sleepDuration: UInt64 = hasActiveTasks ? 500_000_000 : 3_000_000_000 // 500ms vs 3s
+                // Adaptive polling or reconnection sleep duration:
+                // If not connected and not marked for repair, retry reconnection every 5 seconds to avoid battery/CPU drain.
+                // If connected, adaptive polling: active downloads/tasks refresh faster (500ms), idle tasks slower (3s).
+                let sleepDuration: UInt64
+                if !isConnected && !needsRepair {
+                    sleepDuration = 5_000_000_000 // 5 seconds
+                } else {
+                    let hasActiveTasks = !activeDownloads.isEmpty || !tasks.filter({ $0.status == "waiting" }).isEmpty
+                    sleepDuration = hasActiveTasks ? 500_000_000 : 3_000_000_000 // 500ms vs 3s
+                }
 
                 do {
                     try await Task.sleep(nanoseconds: sleepDuration)

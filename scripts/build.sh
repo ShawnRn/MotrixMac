@@ -89,7 +89,8 @@ for TARGET_ARCH in "arm64" "x86_64"; do
             MARKETING_VERSION="${MARKETING_VERSION}" \
             CURRENT_PROJECT_VERSION="${BUILD_NUMBER}" \
             ARCHS="${TARGET_ARCH}" \
-            SKIP_INSTALL=NO
+            SKIP_INSTALL=NO \
+            CODE_SIGNING_ALLOWED=NO
         
         echo "==> Exporting app bundle from archive for ${TARGET_ARCH}..."
         rm -rf "${ARCH_APP_BUNDLE}"

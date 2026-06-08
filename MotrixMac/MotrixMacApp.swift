@@ -284,6 +284,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if NSApp.isActive {
             clearDockCompletedBadge()
         }
+        
+        // Connect download manager to aria2, ensuring notifications work even if launched headless/silent
+        Task {
+            try? await Task.sleep(for: .seconds(1))
+            await DownloadManager.shared.connect()
+        }
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {

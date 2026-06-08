@@ -38,6 +38,15 @@ struct AboutView: View {
     ]
     @State private var changelogs: [ChangelogItem] = [
         ChangelogItem(
+            version: "1.2.5",
+            date: "2026-06-08",
+            changes: [
+                "修复了后台挂载较久、网络切换或电脑休眠后，浏览器插件发送下载任务可能不显示系统通知的问题。",
+                "优化了启动长连接初始化流程，使得在无主窗口的静默后台运行状态下也能正常接收下载事件。",
+                "优化了底层网络恢复时的自适应后台重连机制，避免误判引擎崩溃并提升连接稳定性。"
+            ]
+        ),
+        ChangelogItem(
             version: "1.2.4",
             date: "2026-05-18",
             changes: [
