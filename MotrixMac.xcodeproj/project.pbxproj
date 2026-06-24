@@ -311,7 +311,7 @@
 				CODE_SIGN_ENTITLEMENTS = MotrixMac/MotrixMac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2026060801;
+				CURRENT_PROJECT_VERSION = 2026062401;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = A4P8NY6A4J;
 				ENABLE_APP_SANDBOX = NO;
@@ -325,7 +325,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
-				MARKETING_VERSION = 1.2.5;
+				MARKETING_VERSION = 1.2.6;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-framework",
@@ -352,7 +352,7 @@
 				CODE_SIGN_ENTITLEMENTS = MotrixMac/MotrixMac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2026060801;
+				CURRENT_PROJECT_VERSION = 2026062401;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = A4P8NY6A4J;
 				ENABLE_APP_SANDBOX = NO;
@@ -366,7 +366,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
-				MARKETING_VERSION = 1.2.5;
+				MARKETING_VERSION = 1.2.6;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-framework",

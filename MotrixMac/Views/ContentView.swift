@@ -39,7 +39,7 @@ struct MainContentView: View {
                 .toolbar {
                     if downloadManager.currentCategory == .settings {
                         ToolbarItem(placement: .principal) {
-                            LiquidSettingsPicker(selection: $settingsTab)
+                            LiquidSettingsPicker(selection: $settingsTab, namespace: settingsNamespace)
                         }
                     } else {
                         // Use .navigation to push items to the right and avoid ghost separators

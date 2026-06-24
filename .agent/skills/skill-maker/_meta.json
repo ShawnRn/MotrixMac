@@ -1,0 +1,17 @@
+{
+  "owner": "chenxi-hub",
+  "slug": "skill-maker-chenxi",
+  "displayName": "Skill Maker (ChenXi)",
+  "latest": {
+    "version": "1.2.0",
+    "publishedAt": 1772698327373,
+    "commit": "https://github.com/openclaw/skills/commit/6507fad14239c3903157e74ee29c2449a74a0973"
+  },
+  "history": [
+    {
+      "version": "1.0.0",
+      "publishedAt": 1772682187724,
+      "commit": "https://github.com/openclaw/skills/commit/f2ca0caa147c6286ca776f424216f66baac2c032"
+    }
+  ]
+}

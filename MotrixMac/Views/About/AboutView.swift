@@ -38,6 +38,15 @@ struct AboutView: View {
     ]
     @State private var changelogs: [ChangelogItem] = [
         ChangelogItem(
+            version: "1.2.6",
+            date: "2026-06-24",
+            changes: [
+                "新增下载任务缩略图拖拽功能：可拖至 Finder 复制文件，或拖拽图片至编辑器插入。",
+                "修复了设置页面顶部胶囊控件在切换时闪烁和从左上角飞入的问题。",
+                "优化了设置页面 tab 切换的渲染性能。"
+            ]
+        ),
+        ChangelogItem(
             version: "1.2.5",
             date: "2026-06-08",
             changes: [

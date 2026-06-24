@@ -18,7 +18,7 @@ enum EmbeddedSettingsTab: String, Identifiable, CaseIterable {
 
 struct LiquidSettingsPicker: View {
     @Binding var selection: EmbeddedSettingsTab
-    @Namespace var namespace
+    let namespace: Namespace.ID
     @AppStorage("language") private var language = "zh-CN"
     
     var body: some View {
@@ -26,7 +26,8 @@ struct LiquidSettingsPicker: View {
             ForEach(EmbeddedSettingsTab.allCases) { tab in
                 Text(tab.title(for: language))
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(selection == tab ? .primary : .secondary)
+                    .foregroundStyle(.primary)
+                    .opacity(selection == tab ? 1.0 : 0.6)
                     .padding(.horizontal, 18)
                     .frame(height: 28) // Fixed height for selection box
                     .background {
@@ -38,7 +39,7 @@ struct LiquidSettingsPicker: View {
                     }
                     .contentShape(RoundedRectangle(cornerRadius: 13))
                     .onTapGesture {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
                             selection = tab
                         }
                     }
@@ -58,6 +59,7 @@ struct LiquidSettingsPicker: View {
                 .fill(.quaternary.opacity(0.05))
         }
         .fixedSize() // Prevent toolbar from stretching it
+        .transition(.identity) // 阻止入场/退场过渡动画，但不影响内部 withAnimation 的滑块动画
     }
 }
 
@@ -114,7 +116,8 @@ struct EmbeddedPreferencesView: View {
                 .opacity(activeTab == .advanced ? 1 : 0)
                 .allowsHitTesting(activeTab == .advanced)
         }
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: activeTab)
+        // 不对 ZStack 施加广播式动画——4个重型 Form 同时做透明度渐变会带来渲染压力
+        // 透明度瞬时切换更干脆，滑块动画由 LiquidSettingsPicker 内部的 withAnimation 单独控制
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onTapGesture {
             NSApp.keyWindow?.makeFirstResponder(nil)

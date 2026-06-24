@@ -54,6 +54,19 @@ struct TaskItemView: View {
                         }
                 }
             }
+            .onDrag {
+                guard task.status == "complete" && !task.isFileMissing else {
+                    return NSItemProvider()
+                }
+                var filePath = ""
+                if let firstFile = task.files.first?.path, !firstFile.isEmpty {
+                    filePath = firstFile
+                } else {
+                    filePath = task.dir + "/" + task.name
+                }
+                let fileURL = URL(fileURLWithPath: filePath)
+                return NSItemProvider(object: fileURL as NSURL)
+            }
             .background(
                 GeometryReader { proxy in
                     Color.clear
