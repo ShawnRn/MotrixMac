@@ -3,13 +3,13 @@
     <channel>
         <title>MotrixMac</title>
         <item>
-            <title>1.2.5</title>
-            <pubDate>Mon, 08 Jun 2026 11:49:26 +0800</pubDate>
-            <sparkle:version>2026060801</sparkle:version>
-            <sparkle:shortVersionString>1.2.5</sparkle:shortVersionString>
+            <title>1.2.6</title>
+            <pubDate>Wed, 24 Jun 2026 10:33:48 +0800</pubDate>
+            <sparkle:version>2026062401</sparkle:version>
+            <sparkle:shortVersionString>1.2.6</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>15.6</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/ShawnRn/MotrixMac/releases/download/v1.2.5/MotrixMac_1.2.5_arm64.dmg" type="application/octet-stream" sparkle:os="macos" sparkle:nativeArchitecture="arm64" sparkle:edSignature="/w497YX/EG860yxfGg+Tp9qFbkUFS6c8kYsS+6Ur+SdWJKQQdsdQ9t++AZIVc4Mj0fHGbKzPuSaiur9io+OjAQ==" length="11660938"/>
-            <enclosure url="https://github.com/ShawnRn/MotrixMac/releases/download/v1.2.5/MotrixMac_1.2.5_x86_64.dmg" type="application/octet-stream" sparkle:os="macos" sparkle:nativeArchitecture="x86_64" sparkle:edSignature="voCsOB+/3t6/CwMzEsCGHOsxKRNsW0lacDvQoAW3fDlWKJzyDHhRmPwvJUveVpXcD8gKRQKQMwesz/JC+debBw==" length="11729906"/>
+            <enclosure url="https://github.com/ShawnRn/MotrixMac/releases/download/v1.2.6/MotrixMac_1.2.6_arm64.dmg" type="application/octet-stream" sparkle:os="macos" sparkle:nativeArchitecture="arm64" sparkle:edSignature="wzNy+5qC9KO7YBN7sRLUJYfWG1KTiHMWW73kGf0k3wMI8J0nTZ4o1gVGXp+qr6+Qfzrz6JSTh8Lzr8UojFKrAw==" length="10160923"/>
+            <enclosure url="https://github.com/ShawnRn/MotrixMac/releases/download/v1.2.6/MotrixMac_1.2.6_x86_64.dmg" type="application/octet-stream" sparkle:os="macos" sparkle:nativeArchitecture="x86_64" sparkle:edSignature="B1lwN8wGXnf0UWT3vUwgxS7NEaa4tVf/XuRzf2k3BCzgahkOcuqbplu7bwiQPwGa2TViF6iXMu3SxfocJuDwAQ==" length="10268376"/>
         </item>
     </channel>
 </rss>
