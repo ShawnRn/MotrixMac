@@ -241,10 +241,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil
         )
 
-        // Silent start: hide main window if enabled
+        // Silent start: hide main window if enabled and launched at login
         let silentStart = UserDefaults.standard.bool(forKey: "silentStart")
 
-        if silentStart {
+        if silentStart && isLaunchedAtLogin() {
             // Close all windows on silent start
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 NSApp.windows.forEach { window in
@@ -556,6 +556,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .all,
             bundleIdentifier as CFString
         )
+    }
+    
+    private func isLaunchedAtLogin() -> Bool {
+        guard let event = NSAppleEventManager.shared().currentAppleEvent else {
+            return false
+        }
+        return event.eventID == kAEOpenApplication &&
+               event.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
     }
 }
 
