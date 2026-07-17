@@ -38,6 +38,14 @@ struct AboutView: View {
     ]
     @State private var changelogs: [ChangelogItem] = [
         ChangelogItem(
+            version: "1.2.7",
+            date: "2026-07-17",
+            changes: [
+                "修复了 macOS 15+ (macOS 27) 系统上由于 ViewBridge/MenuBarExtra 导致的系统状态栏崩溃问题。",
+                "重构了状态栏管理机制，改用更稳定且性能更佳的本地 NSHostingView 缓存复用逻辑。"
+            ]
+        ),
+        ChangelogItem(
             version: "1.2.6",
             date: "2026-06-24",
             changes: [

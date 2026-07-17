@@ -59,27 +59,6 @@ struct MotrixMacApp: App {
         .commands {
             MotrixCommands(downloadManager: downloadManager, language: language)
         }
-
-        MotrixSecondaryScenes(downloadManager: downloadManager)
-    }
-}
-
-/// Dedicated scene for Menu Bar Extra and other background elements
-struct MotrixSecondaryScenes: Scene {
-    let downloadManager: DownloadManager
-    @AppStorage("showSpeedInMenuBar") private var showSpeedInMenuBar = false
-
-    var body: some Scene {
-        MenuBarExtra {
-            MenuBarView()
-                .environment(downloadManager)
-        } label: {
-            MenuBarLabel(
-                speed: downloadManager.totalDownloadSpeed,
-                showSpeed: showSpeedInMenuBar
-            )
-        }
-        .menuBarExtraStyle(.window)
     }
 }
 
@@ -174,6 +153,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let dockBadgeCountKey = "dockCompletedBadgeCount"
     private var pendingDockBadgeCount = 0
     
+    // Custom status bar controller to replace MenuBarExtra
+    var statusBarController: StatusBarController?
+    
     // Sparkle updater controller
     let updaterController: SPUStandardUpdaterController
     
@@ -190,6 +172,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Start app logging
         Logger.info("MotrixMacApp: App launched")
+        
+        // Initialize custom menu bar controller
+        self.statusBarController = StatusBarController(downloadManager: DownloadManager.shared)
         
         configureDockTileIfNeeded()
         pendingDockBadgeCount = max(0, UserDefaults.standard.integer(forKey: dockBadgeCountKey))
@@ -351,6 +336,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func dockPreferenceChanged() {
         DispatchQueue.main.async {
             self.updateDockPolicy()
+            self.statusBarController?.updateIndicator()
         }
     }
     
@@ -402,6 +388,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if needsDisplay {
             NSApp.dockTile.display()
         }
+        
+        // Update menu bar indicator status
+        statusBarController?.updateIndicator()
     }
     
     func incrementDockCompletedBadge(by count: Int = 1) {
@@ -784,3 +773,92 @@ private final class DockSpeedTileView: NSView {
         return NSPoint(x: x, y: y)
     }
 }
+
+// MARK: - Menu Bar Custom Controller
+
+class ClickThroughHostingView<Content: View>: NSHostingView<Content> {
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        return nil // Pass mouse events through to statusItem.button
+    }
+}
+
+@MainActor
+class StatusBarController: NSObject {
+    private let statusItem: NSStatusItem
+    private let popover: NSPopover
+    private let downloadManager: DownloadManager
+    private var hostingView: ClickThroughHostingView<MenuBarLabel>?
+    
+    init(downloadManager: DownloadManager) {
+        self.downloadManager = downloadManager
+        self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        self.popover = NSPopover()
+        
+        super.init()
+        
+        // Configure popover
+        let menuBarView = MenuBarView()
+            .environment(downloadManager)
+        let hostingController = NSHostingController(rootView: menuBarView)
+        popover.contentViewController = hostingController
+        popover.behavior = .transient
+        
+        // Configure button action
+        if let button = statusItem.button {
+            button.target = self
+            button.action = #selector(togglePopover(_:))
+        }
+        
+        updateIndicator()
+    }
+    
+    func updateIndicator() {
+        guard let button = statusItem.button else { return }
+        
+        let showSpeed = UserDefaults.standard.bool(forKey: "showSpeedInMenuBar")
+        let speed = downloadManager.totalDownloadSpeed
+        
+        let label = MenuBarLabel(speed: speed, showSpeed: showSpeed)
+        
+        if let existing = hostingView {
+            // Reuse view and update properties directly
+            existing.rootView = label
+        } else {
+            // Allocate once
+            let newHostingView = ClickThroughHostingView(rootView: label)
+            button.addSubview(newHostingView)
+            self.hostingView = newHostingView
+        }
+        
+        if let hostingView = hostingView {
+            // Measure size
+            let idealSize = hostingView.fittingSize
+            let targetSize = NSSize(width: idealSize.width, height: 22)
+            
+            // Apply frame changes only when size actually changes
+            if hostingView.frame.size != targetSize {
+                hostingView.frame = NSRect(origin: .zero, size: targetSize)
+                statusItem.length = idealSize.width
+            }
+        }
+    }
+    
+    @objc private func togglePopover(_ sender: AnyObject?) {
+        guard let button = statusItem.button else { return }
+        
+        if popover.isShown {
+            popover.performClose(sender)
+        } else {
+            NSApp.activate(ignoringOtherApps: true)
+            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        }
+    }
+    
+    func closePopover() {
+        if popover.isShown {
+            popover.performClose(nil)
+        }
+    }
+}
+
+
