@@ -4,12 +4,12 @@
         <title>MotrixMac</title>
         <item>
             <title>1.2.7</title>
-            <pubDate>Fri, 17 Jul 2026 22:08:24 +0800</pubDate>
-            <sparkle:version>2026062401</sparkle:version>
+            <pubDate>Sat, 18 Jul 2026 17:47:07 +0800</pubDate>
+            <sparkle:version>2026071701</sparkle:version>
             <sparkle:shortVersionString>1.2.7</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>15.6</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/ShawnRn/MotrixMac/releases/download/v1.2.7/MotrixMac_1.2.7_arm64.dmg" type="application/octet-stream" sparkle:os="macos" sparkle:nativeArchitecture="arm64" sparkle:edSignature="Nr+IpQ2/ZzhacBtIJeQqKX/+CnxwV+QRhGKibh2E+eI3rmqz+XGtp6qEBhhzghKLU9l9M3GMEUxyOPEmACBJBw==" length="10164780"/>
-            <enclosure url="https://github.com/ShawnRn/MotrixMac/releases/download/v1.2.7/MotrixMac_1.2.7_x86_64.dmg" type="application/octet-stream" sparkle:os="macos" sparkle:nativeArchitecture="x86_64" sparkle:edSignature="MCKiBSH8b9AsjHp8zLW9++WXYPYexc0e6WWzqQvA9EfR37qGXrVgLv/INg9iQEWyn0imGRlzyqqP+roPZ128CQ==" length="10268732"/>
+            <enclosure url="https://github.com/ShawnRn/MotrixMac/releases/download/v1.2.7/MotrixMac_1.2.7_arm64.dmg" type="application/octet-stream" sparkle:os="macos" sparkle:nativeArchitecture="arm64" sparkle:edSignature="ijOKd1bWKPo4NZBMzxftZ8UYwzAB4AdOwBXZ7x4Audi0dclB4RMLoLY2hPE78/ABC8t/pKxpLwPOtGN7ONtxCw==" length="10169301"/>
+            <enclosure url="https://github.com/ShawnRn/MotrixMac/releases/download/v1.2.7/MotrixMac_1.2.7_x86_64.dmg" type="application/octet-stream" sparkle:os="macos" sparkle:nativeArchitecture="x86_64" sparkle:edSignature="2JptxgvvtsA+CgDNkSN08e1frJfGPpyOBt9YzJOIxY7NCLiu8/B+EhbXSFpO5um1hpqaWR6sthgiTO2vbuLBDw==" length="10276589"/>
         </item>
     </channel>
 </rss>
