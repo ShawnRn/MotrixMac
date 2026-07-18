@@ -39,9 +39,18 @@ fi
 echo "--- 开始为版本 $VERSION 准备发布 ---"
 
 # 2. 从项目设置中获取当前的 Build 号 (sparkle:version)
-echo "正在从项目设置中提取流水号 Build 号..."
-XCODE_SETTINGS=$(xcodebuild -showBuildSettings -project "$PROJECT_DIR/MotrixMac.xcodeproj" -scheme "MotrixMac" -configuration "Release" 2>/dev/null)
-SPARKLE_VERSION=$(echo "$XCODE_SETTINGS" | grep " CURRENT_PROJECT_VERSION =" | head -n 1 | awk '{print $3}')
+echo "正在从 version.env 中提取版本和 Build 号..."
+SPARKLE_VERSION=""
+if [[ -f "$PROJECT_DIR/version.env" ]]; then
+    source "$PROJECT_DIR/version.env"
+    SPARKLE_VERSION="${BUILD_NUMBER:-}"
+fi
+
+if [ -z "$SPARKLE_VERSION" ]; then
+    echo "正在从项目设置中提取流水号 Build 号..."
+    XCODE_SETTINGS=$(xcodebuild -showBuildSettings -project "$PROJECT_DIR/MotrixMac.xcodeproj" -scheme "MotrixMac" -configuration "Release" 2>/dev/null)
+    SPARKLE_VERSION=$(echo "$XCODE_SETTINGS" | grep " CURRENT_PROJECT_VERSION =" | head -n 1 | awk '{print $3}')
+fi
 
 if [ -z "$SPARKLE_VERSION" ]; then
     echo "警告: 无法从项目设置获取 CURRENT_PROJECT_VERSION，回退到日期生成方案..."

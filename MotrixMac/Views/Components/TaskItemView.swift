@@ -12,6 +12,7 @@ struct TaskItemView: View {
     @Environment(DownloadManager.self) private var downloadManager
     let task: DownloadTask
     let isSelected: Bool
+    var selectedTaskIds: Set<String> = []
     var onThumbnailFrameChanged: (CGRect) -> Void = { _ in }
     var onThumbnailImageChanged: (NSImage) -> Void = { _ in }
     var onShowInfo: () -> Void = {}
@@ -160,7 +161,7 @@ struct TaskItemView: View {
         }
         // Removed local check: .onAppear { checkFileExistence() }
         .contextMenu {
-            TaskContextMenu(task: task)
+            TaskContextMenu(task: task, selectedTaskIds: selectedTaskIds)
         }
         .sheet(isPresented: $showDeleteConfirmation) {
             DeleteConfirmationSheet(
@@ -355,35 +356,86 @@ struct ActionButton: View {
 struct TaskContextMenu: View {
     @Environment(DownloadManager.self) private var downloadManager
     let task: DownloadTask
+    let selectedTaskIds: Set<String>
     @AppStorage("language") private var language = "zh-CN"
 
     var body: some View {
         Group {
             if task.isSeeding {
                 Button("停止做种".localized(for: language)) {
-                    Task { await downloadManager.stopSeeding(task) }
+                    Task {
+                        if selectedTaskIds.contains(task.id) && selectedTaskIds.count > 1 {
+                            for id in selectedTaskIds {
+                                if let t = downloadManager.tasks.first(where: { $0.id == id }), t.isSeeding {
+                                    await downloadManager.stopSeeding(t)
+                                }
+                            }
+                        } else {
+                            await downloadManager.stopSeeding(task)
+                        }
+                    }
                 }
             } else if task.canPause {
                 Button("暂停".localized(for: language)) {
-                    Task { await downloadManager.pauseTask(task) }
+                    Task {
+                        if selectedTaskIds.contains(task.id) && selectedTaskIds.count > 1 {
+                            for id in selectedTaskIds {
+                                if let t = downloadManager.tasks.first(where: { $0.id == id }), t.canPause {
+                                    await downloadManager.pauseTask(t)
+                                }
+                            }
+                        } else {
+                            await downloadManager.pauseTask(task)
+                        }
+                    }
                 }
             }
 
             if task.canResume {
                 Button("恢复".localized(for: language)) {
-                    Task { await downloadManager.resumeTask(task) }
+                    Task {
+                        if selectedTaskIds.contains(task.id) && selectedTaskIds.count > 1 {
+                            for id in selectedTaskIds {
+                                if let t = downloadManager.tasks.first(where: { $0.id == id }), t.canResume {
+                                    await downloadManager.resumeTask(t)
+                                }
+                            }
+                        } else {
+                            await downloadManager.resumeTask(task)
+                        }
+                    }
                 }
             }
 
             if task.status == "error" || task.status == "removed" {
                 Button(task.status == "removed" ? "重新下载".localized(for: language) : "重试".localized(for: language)) {
-                    Task { await downloadManager.retryTask(task) }
+                    Task {
+                        if selectedTaskIds.contains(task.id) && selectedTaskIds.count > 1 {
+                            for id in selectedTaskIds {
+                                if let t = downloadManager.tasks.first(where: { $0.id == id }), (t.status == "error" || t.status == "removed") {
+                                    await downloadManager.retryTask(t)
+                                }
+                            }
+                        } else {
+                            await downloadManager.retryTask(task)
+                        }
+                    }
                 }
             }
 
             if task.canCancel && task.status != "removed" {
                 Button("取消下载".localized(for: language)) {
-                    Task { await downloadManager.cancelTask(task) }
+                    Task {
+                        if selectedTaskIds.contains(task.id) && selectedTaskIds.count > 1 {
+                            for id in selectedTaskIds {
+                                if let t = downloadManager.tasks.first(where: { $0.id == id }), t.canCancel && t.status != "removed" {
+                                    await downloadManager.cancelTask(t)
+                                }
+                            }
+                        } else {
+                            await downloadManager.cancelTask(task)
+                        }
+                    }
                 }
             }
 
@@ -401,11 +453,31 @@ struct TaskContextMenu: View {
             Divider()
 
             Button("移除记录".localized(for: language), role: .destructive) {
-                Task { await downloadManager.deleteTask(task) }
+                Task {
+                    if selectedTaskIds.contains(task.id) && selectedTaskIds.count > 1 {
+                        for id in selectedTaskIds {
+                            if let t = downloadManager.tasks.first(where: { $0.id == id }) {
+                                await downloadManager.deleteTask(t)
+                            }
+                        }
+                    } else {
+                        await downloadManager.deleteTask(task)
+                    }
+                }
             }
 
             Button("移除记录并删除本地文件".localized(for: language), role: .destructive) {
-                Task { await downloadManager.deleteTask(task, withFiles: true) }
+                Task {
+                    if selectedTaskIds.contains(task.id) && selectedTaskIds.count > 1 {
+                        for id in selectedTaskIds {
+                            if let t = downloadManager.tasks.first(where: { $0.id == id }) {
+                                await downloadManager.deleteTask(t, withFiles: true)
+                            }
+                        }
+                    } else {
+                        await downloadManager.deleteTask(task, withFiles: true)
+                    }
+                }
             }
         }
     }

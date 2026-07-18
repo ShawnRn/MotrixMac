@@ -99,6 +99,8 @@ for TARGET_ARCH in "arm64" "x86_64"; do
 
     # 3. Post-processing (Signing)
     SIGNING_IDENTITY="-"
+    echo "==> Clearing extended attributes for ${TARGET_ARCH}..."
+    xattr -cr "${ARCH_APP_BUNDLE}"
     echo "==> Signing app bundle (Ad-hoc) for ${TARGET_ARCH}..."
     codesign --force --deep --sign "${SIGNING_IDENTITY}" "${ARCH_APP_BUNDLE}"
 

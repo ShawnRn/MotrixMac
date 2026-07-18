@@ -241,6 +241,7 @@ struct TaskListView: View {
             TaskItemView(
                 task: task,
                 isSelected: isSelected,
+                selectedTaskIds: selectedTaskIds,
                 onThumbnailFrameChanged: { frame in
                     itemWindowFrames[task.id] = frame
                     if let filePath = task.files.first?.path, !filePath.isEmpty {
