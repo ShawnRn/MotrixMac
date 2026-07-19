@@ -365,11 +365,8 @@ struct TaskContextMenu: View {
                 Button("停止做种".localized(for: language)) {
                     Task {
                         if selectedTaskIds.contains(task.id) && selectedTaskIds.count > 1 {
-                            for id in selectedTaskIds {
-                                if let t = downloadManager.tasks.first(where: { $0.id == id }), t.isSeeding {
-                                    await downloadManager.stopSeeding(t)
-                                }
-                            }
+                            let tasksToStop = downloadManager.tasks.filter { selectedTaskIds.contains($0.id) && $0.isSeeding }
+                            await downloadManager.stopSeedingTasks(tasksToStop)
                         } else {
                             await downloadManager.stopSeeding(task)
                         }
@@ -379,11 +376,8 @@ struct TaskContextMenu: View {
                 Button("暂停".localized(for: language)) {
                     Task {
                         if selectedTaskIds.contains(task.id) && selectedTaskIds.count > 1 {
-                            for id in selectedTaskIds {
-                                if let t = downloadManager.tasks.first(where: { $0.id == id }), t.canPause {
-                                    await downloadManager.pauseTask(t)
-                                }
-                            }
+                            let tasksToPause = downloadManager.tasks.filter { selectedTaskIds.contains($0.id) && $0.canPause }
+                            await downloadManager.pauseTasks(tasksToPause)
                         } else {
                             await downloadManager.pauseTask(task)
                         }
@@ -395,11 +389,8 @@ struct TaskContextMenu: View {
                 Button("恢复".localized(for: language)) {
                     Task {
                         if selectedTaskIds.contains(task.id) && selectedTaskIds.count > 1 {
-                            for id in selectedTaskIds {
-                                if let t = downloadManager.tasks.first(where: { $0.id == id }), t.canResume {
-                                    await downloadManager.resumeTask(t)
-                                }
-                            }
+                            let tasksToResume = downloadManager.tasks.filter { selectedTaskIds.contains($0.id) && $0.canResume }
+                            await downloadManager.resumeTasks(tasksToResume)
                         } else {
                             await downloadManager.resumeTask(task)
                         }
@@ -411,11 +402,8 @@ struct TaskContextMenu: View {
                 Button(task.status == "removed" ? "重新下载".localized(for: language) : "重试".localized(for: language)) {
                     Task {
                         if selectedTaskIds.contains(task.id) && selectedTaskIds.count > 1 {
-                            for id in selectedTaskIds {
-                                if let t = downloadManager.tasks.first(where: { $0.id == id }), (t.status == "error" || t.status == "removed") {
-                                    await downloadManager.retryTask(t)
-                                }
-                            }
+                            let tasksToRetry = downloadManager.tasks.filter { selectedTaskIds.contains($0.id) && ($0.status == "error" || $0.status == "removed") }
+                            await downloadManager.retryTasks(tasksToRetry)
                         } else {
                             await downloadManager.retryTask(task)
                         }
@@ -427,11 +415,8 @@ struct TaskContextMenu: View {
                 Button("取消下载".localized(for: language)) {
                     Task {
                         if selectedTaskIds.contains(task.id) && selectedTaskIds.count > 1 {
-                            for id in selectedTaskIds {
-                                if let t = downloadManager.tasks.first(where: { $0.id == id }), t.canCancel && t.status != "removed" {
-                                    await downloadManager.cancelTask(t)
-                                }
-                            }
+                            let tasksToCancel = downloadManager.tasks.filter { selectedTaskIds.contains($0.id) && $0.canCancel && $0.status != "removed" }
+                            await downloadManager.cancelTasks(tasksToCancel)
                         } else {
                             await downloadManager.cancelTask(task)
                         }
@@ -455,13 +440,10 @@ struct TaskContextMenu: View {
             Button("移除记录".localized(for: language), role: .destructive) {
                 Task {
                     if selectedTaskIds.contains(task.id) && selectedTaskIds.count > 1 {
-                        for id in selectedTaskIds {
-                            if let t = downloadManager.tasks.first(where: { $0.id == id }) {
-                                await downloadManager.deleteTask(t)
-                            }
-                        }
+                        let tasksToDelete = downloadManager.tasks.filter { selectedTaskIds.contains($0.id) }
+                        await downloadManager.deleteTasks(tasksToDelete, withFiles: false)
                     } else {
-                        await downloadManager.deleteTask(task)
+                        await downloadManager.deleteTask(task, withFiles: false)
                     }
                 }
             }
@@ -469,11 +451,8 @@ struct TaskContextMenu: View {
             Button("移除记录并删除本地文件".localized(for: language), role: .destructive) {
                 Task {
                     if selectedTaskIds.contains(task.id) && selectedTaskIds.count > 1 {
-                        for id in selectedTaskIds {
-                            if let t = downloadManager.tasks.first(where: { $0.id == id }) {
-                                await downloadManager.deleteTask(t, withFiles: true)
-                            }
-                        }
+                        let tasksToDelete = downloadManager.tasks.filter { selectedTaskIds.contains($0.id) }
+                        await downloadManager.deleteTasks(tasksToDelete, withFiles: true)
                     } else {
                         await downloadManager.deleteTask(task, withFiles: true)
                     }

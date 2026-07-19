@@ -1239,6 +1239,19 @@ final class DownloadManager {
         }
     }
     
+    func pauseTasks(_ tasksToPause: [DownloadTask]) async {
+        guard let service = aria2Service else { return }
+        await withTaskGroup(of: Void.self) { group in
+            for t in tasksToPause {
+                group.addTask {
+                    _ = try? await service.pause(gid: t.id)
+                }
+            }
+        }
+        await refreshTasks()
+    }
+
+    
     /// Resolves the actual aria2 GID for a BT task by matching infoHash
     private func resolveRealGid(forInfoHash infoHash: String) async -> String? {
         guard let service = aria2Service else { return nil }
@@ -1284,6 +1297,19 @@ final class DownloadManager {
         }
     }
     
+    func resumeTasks(_ tasksToResume: [DownloadTask]) async {
+        guard let service = aria2Service else { return }
+        await withTaskGroup(of: Void.self) { group in
+            for t in tasksToResume {
+                group.addTask {
+                    _ = try? await service.unpause(gid: t.id)
+                }
+            }
+        }
+        await refreshTasks()
+    }
+
+    
     func retryTask(_ task: DownloadTask) async {
         if task.status == "removed" || task.status == "error" {
             // First, remove the old task record from aria2
@@ -1310,6 +1336,17 @@ final class DownloadManager {
             await resumeTask(task)
         }
     }
+    
+    func retryTasks(_ tasksToRetry: [DownloadTask]) async {
+        await withTaskGroup(of: Void.self) { group in
+            for t in tasksToRetry {
+                group.addTask {
+                    await self.retryTask(t)
+                }
+            }
+        }
+    }
+
 
     func cancelTask(_ task: DownloadTask) async {
         guard let service = aria2Service else { return }
@@ -1321,6 +1358,19 @@ final class DownloadManager {
             Logger.error("Failed to cancel task: \(error)")
         }
     }
+    
+    func cancelTasks(_ tasksToCancel: [DownloadTask]) async {
+        guard let service = aria2Service else { return }
+        await withTaskGroup(of: Void.self) { group in
+            for t in tasksToCancel {
+                group.addTask {
+                    _ = try? await service.remove(gid: t.id)
+                }
+            }
+        }
+        await refreshTasks()
+    }
+
 
     func stopSeeding(_ task: DownloadTask) async {
         guard let service = aria2Service else { return }
@@ -1343,6 +1393,27 @@ final class DownloadManager {
             await refreshTasks()
         }
     }
+    
+    func stopSeedingTasks(_ tasksToStop: [DownloadTask]) async {
+        guard let service = aria2Service else { return }
+        await withTaskGroup(of: Void.self) { group in
+            for t in tasksToStop {
+                group.addTask {
+                    _ = try? await service.forceRemove(gid: t.id)
+                    var updatedTask = t
+                    updatedTask.status = "complete"
+                    updatedTask.completedAt = Date()
+                    await MainActor.run {
+                        self.persistentTasks[t.id] = updatedTask
+                    }
+                    _ = try? await service.removeDownloadResult(gid: t.id)
+                }
+            }
+        }
+        self.savePersistentTasks()
+        await refreshTasks()
+    }
+
 
     func deleteTask(_ task: DownloadTask, withFiles: Bool = false) async {
         await removeTasks(gids: [task.id], deleteFiles: withFiles)
