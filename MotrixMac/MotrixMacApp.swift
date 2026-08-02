@@ -784,18 +784,11 @@ private final class DockSpeedTileView: NSView {
 
 // MARK: - Menu Bar Custom Controller
 
-class ClickThroughHostingView<Content: View>: NSHostingView<Content> {
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        return nil // Pass mouse events through to statusItem.button
-    }
-}
-
 @MainActor
 class StatusBarController: NSObject {
     private let statusItem: NSStatusItem
     private let popover: NSPopover
     private let downloadManager: DownloadManager
-    private var hostingView: ClickThroughHostingView<MenuBarLabel>?
     
     init(downloadManager: DownloadManager) {
         self.downloadManager = downloadManager
@@ -825,28 +818,33 @@ class StatusBarController: NSObject {
         
         let showSpeed = UserDefaults.standard.bool(forKey: "showSpeedInMenuBar")
         let speed = downloadManager.totalDownloadSpeed
+        let language = UserDefaults.standard.string(forKey: "language") ?? "zh-CN"
         
+        // 1. Create the SwiftUI view for the menu bar label
         let label = MenuBarLabel(speed: speed, showSpeed: showSpeed)
+            .environment(downloadManager)
+            .environment(\.locale, .init(identifier: language))
+            .frame(height: 22)
         
-        if let existing = hostingView {
-            // Reuse view and update properties directly
-            existing.rootView = label
-        } else {
-            // Allocate once
-            let newHostingView = ClickThroughHostingView(rootView: label)
-            button.addSubview(newHostingView)
-            self.hostingView = newHostingView
-        }
+        // 2. Use ImageRenderer to render the SwiftUI view to an offscreen image
+        let renderer = ImageRenderer(content: label)
+        let scale = NSScreen.main?.backingScaleFactor ?? 2.0
+        renderer.scale = scale
         
-        if let hostingView = hostingView {
-            // Measure size
-            let idealSize = hostingView.fittingSize
-            let targetSize = NSSize(width: idealSize.width, height: 22)
+        if let cgImage = renderer.cgImage {
+            let width = CGFloat(cgImage.width) / scale
+            let height = CGFloat(cgImage.height) / scale
+            let imageSize = NSSize(width: width, height: height)
             
-            // Apply frame changes only when size actually changes
-            if hostingView.frame.size != targetSize {
-                hostingView.frame = NSRect(origin: .zero, size: targetSize)
-                statusItem.length = idealSize.width
+            let nsImage = NSImage(cgImage: cgImage, size: imageSize)
+            nsImage.isTemplate = true // Crucial: Allows automatic theme coloring in menu bar
+            
+            // 3. Directly update the status bar button image and length
+            button.image = nsImage
+            button.imagePosition = .imageOnly
+            
+            if statusItem.length != width {
+                statusItem.length = width
             }
         }
     }
