@@ -50,8 +50,9 @@ for TARGET_ARCH in "arm64" "x86_64"; do
     echo "==> Starting build process for architecture: ${TARGET_ARCH}"
     echo "=================================================="
     
-    ARCH_APP_BUNDLE="${ROOT}/${PROJECT_NAME}_${TARGET_ARCH}.app"
+    ARCH_APP_BUNDLE="${ROOT}/.build/${PROJECT_NAME}_${TARGET_ARCH}.app"
     ARCH_ARCHIVE_PATH="${ROOT}/.build/archive/${PROJECT_NAME}_${TARGET_ARCH}.xcarchive"
+
     
     if [[ "$XCODE_CONF" == "Debug" ]]; then
         echo "==> Building project (${XCODE_CONF}) for ${TARGET_ARCH}..."

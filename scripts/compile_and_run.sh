@@ -8,7 +8,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_NAME="MotrixMac"
 CURRENT_ARCH="$(uname -m)"
-APP_BUNDLE="${ROOT_DIR}/${APP_NAME}_${CURRENT_ARCH}.app"
+APP_BUNDLE="${ROOT_DIR}/.build/${APP_NAME}_${CURRENT_ARCH}.app"
+
 APP_PROCESS_PATTERN="${APP_NAME}.*app/Contents/MacOS/${APP_NAME}"
 APP_SUPPORT_DIR="${HOME}/Library/Application Support/${APP_NAME}"
 ARIA2_CONFIG="${APP_SUPPORT_DIR}/aria2.conf"

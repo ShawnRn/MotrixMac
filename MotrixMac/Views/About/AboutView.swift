@@ -38,9 +38,19 @@ struct AboutView: View {
     ]
     @State private var changelogs: [ChangelogItem] = [
         ChangelogItem(
+            version: "1.2.8",
+            date: "2026-08-02",
+            changes: [
+                "修复了按 ⌘W 或关闭红叉后重新打开出现的幽灵窗口 Bug，实现 0 毫秒秒级激活。",
+                "全面优化数据持久化与 I/O 性能，剔除 500ms 轮询内的高频写盘与同步磁盘校验。",
+                "重构菜单栏图标渲染逻辑，采用 ImageRenderer 彻底杜绝 ViewBridge 休眠唤醒崩溃。"
+            ]
+        ),
+        ChangelogItem(
             version: "1.2.7",
             date: "2026-07-17",
             changes: [
+
                 "修复了 macOS 15+ (macOS 27) 系统上由于 ViewBridge/MenuBarExtra 导致的系统状态栏崩溃问题。",
                 "重构了状态栏管理机制，改用更稳定且性能更佳的本地 NSHostingView 缓存复用逻辑。"
             ]
