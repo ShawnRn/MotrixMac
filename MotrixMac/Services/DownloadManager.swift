@@ -30,12 +30,23 @@ final class DownloadManager {
     private var retryTransitionGIDs: [String: String] = [:] // Map of [OldGID: NewGID_Placeholder_or_Final]
 
     // UI state
+    weak var mainWindow: NSWindow?
     var showAddTaskSheet = false
     var showAddTorrentSheet = false
     var showAboutPanel = false
     var shouldOpenMainWindow = false
     var shouldResetNavigation = false
     var pendingTorrentURL: URL? = nil  // For opening .torrent files from Finder
+
+    func showAndActivateMainWindow() {
+        if let window = mainWindow {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        } else {
+            shouldOpenMainWindow = true
+        }
+    }
+
 
     // UI Filtering & Search (Scheme B)
     var searchText: String = "" { didSet { updateFilteredTasks() } }

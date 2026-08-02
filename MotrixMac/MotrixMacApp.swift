@@ -52,10 +52,16 @@ struct MotrixMacApp: App {
         .defaultSize(width: 1024, height: 700)
         .onChange(of: downloadManager.shouldOpenMainWindow) { _, newValue in
             if newValue {
-                openWindow(id: "main")
+                if let window = downloadManager.mainWindow {
+                    window.makeKeyAndOrderFront(nil)
+                    NSApp.activate(ignoringOtherApps: true)
+                } else {
+                    openWindow(id: "main")
+                }
                 downloadManager.shouldOpenMainWindow = false
             }
         }
+
         .commands {
             MotrixCommands(downloadManager: downloadManager, language: language)
         }
@@ -481,6 +487,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // mainstream behavior: clear badge when dock icon is clicked
         clearDockCompletedBadge()
         
+        if let window = DownloadManager.shared.mainWindow {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return true
+        }
+        
         if !flag {
             // No windows visible, trigger opening and navigation reset to Home
             DispatchQueue.main.async {
@@ -494,6 +506,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Just return true to let system focus the window, keeping user context.
         return true
     }
+
 
     // URL handling moved to .onOpenURL in MotrixMacApp
     

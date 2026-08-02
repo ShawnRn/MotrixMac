@@ -99,7 +99,9 @@ struct MainContentView: View {
             downloadManager.currentCategory = .settings
             sidebarVisibility = .all
         }
+        .background(MainWindowAccessor())
         .onChange(of: downloadManager.shouldResetNavigation) { _, newValue in
+
             if newValue {
                 downloadManager.currentCategory = .downloading
                 downloadManager.shouldResetNavigation = false
@@ -425,3 +427,30 @@ struct LiquidBlurModifier: ViewModifier {
             .opacity(opacity)
     }
 }
+
+// MARK: - Window Delegate & Accessor for Ghost Window Prevention
+
+final class MainWindowDelegate: NSObject, NSWindowDelegate {
+    static let shared = MainWindowDelegate()
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        // Order out (hide) the window instead of destroying it
+        sender.orderOut(nil)
+        return false // Cancel standard destroy behavior
+    }
+}
+
+struct MainWindowAccessor: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            if let window = view.window {
+                window.delegate = MainWindowDelegate.shared
+                DownloadManager.shared.mainWindow = window
+            }
+        }
+        return view
+    }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
