@@ -9,11 +9,13 @@ actor Aria2Service {
     private var socket: WebSocket?
     private var requestId = 0
     private var pendingRequests: [String: CheckedContinuation<Any, Error>] = [:]
+    private var requestTimeoutTasks: [String: Task<Void, Never>] = [:]
     private var connectTimeoutTask: Task<Void, Never>? // Directive 4: Cancellation Management
 
     deinit {
         // Directive 1 & 4: Deinit Safety
         connectTimeoutTask?.cancel()
+        requestTimeoutTasks.values.forEach { $0.cancel() }
         socket?.onEvent = nil
         socket?.disconnect()
     }
@@ -77,6 +79,11 @@ actor Aria2Service {
         // Directive 4: Cancel timeout
         connectTimeoutTask?.cancel()
         connectTimeoutTask = nil
+        requestTimeoutTasks.values.forEach { $0.cancel() }
+        requestTimeoutTasks.removeAll()
+        let requests = pendingRequests.values
+        pendingRequests.removeAll()
+        requests.forEach { $0.resume(throwing: Aria2Error.connectionFailed) }
         
         socket?.onEvent = nil
         socket?.disconnect()
@@ -131,6 +138,7 @@ actor Aria2Service {
 
         // Handle method invocation response (has id)
         if let id = json["id"] as? String {
+            requestTimeoutTasks.removeValue(forKey: id)?.cancel()
             if let continuation = pendingRequests.removeValue(forKey: id) {
                 if let error = json["error"] as? [String: Any],
                     let message = error["message"] as? String
@@ -188,13 +196,19 @@ actor Aria2Service {
             socket?.write(string: text)
 
             // Timeout to clean up pendingRequests if no response is received
-            Task {
+            requestTimeoutTasks[id] = Task { [weak self] in
                 try? await Task.sleep(nanoseconds: 10 * 1_000_000_000) // 10s
-                if let _ = self.pendingRequests[id] {
-                    self.pendingRequests.removeValue(forKey: id)?.resume(throwing: Aria2Error.rpcError("Request timeout"))
-                }
+                guard !Task.isCancelled else { return }
+                await self?.timeoutRequest(id: id)
             }
         }
+    }
+
+    private func timeoutRequest(id: String) {
+        requestTimeoutTasks.removeValue(forKey: id)
+        pendingRequests.removeValue(forKey: id)?.resume(
+            throwing: Aria2Error.rpcError("Request timeout")
+        )
     }
 
     // MARK: - Download Control

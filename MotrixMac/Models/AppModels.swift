@@ -108,8 +108,27 @@ struct DownloadTask: Identifiable, Equatable, Codable, Sendable {
         try container.encodeIfPresent(bitfield, forKey: .bitfield)
         try container.encode(downloadSpeedHistory, forKey: .downloadSpeedHistory)
     }
-    
+
+    /// Determines whether the persistent metadata of the task has meaningfully changed,
+
+    /// excluding transient real-time metrics such as download/upload speed and speed history.
+    func isPersistentMetadataEqual(to other: DownloadTask) -> Bool {
+        return id == other.id &&
+            name == other.name &&
+            uri == other.uri &&
+            dir == other.dir &&
+            status == other.status &&
+            totalLength == other.totalLength &&
+            completedLength == other.completedLength &&
+            addedAt == other.addedAt &&
+            completedAt == other.completedAt &&
+            errorMessage == other.errorMessage &&
+            errorCode == other.errorCode &&
+            expectedTotalLength == other.expectedTotalLength
+    }
+
     // Memberwise initializer (Restored manually since custom init(from:) removes the compiler-generated one)
+
     nonisolated init(
         id: String,
         name: String,

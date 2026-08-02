@@ -170,8 +170,13 @@ struct TaskListView: View {
                 .textSelection(.disabled) // Fix cursor turning to I-beam
             }
             .onPreferenceChange(TaskItemFramePreferenceKey.self) { frames in
-                itemFrames = frames
+                // Prevent continuous Layout Thrashing during pure scrolling:
+                // Only update state if keys change (items added/removed) or during active marquee drag
+                if dragStart != nil || itemFrames.keys != frames.keys {
+                    itemFrames = frames
+                }
             }
+
             .scrollContentBackground(.hidden)
             .textSelection(.disabled) // Ensure entire scroll area, including empty space, disables text selection
             .background(Color.clear)

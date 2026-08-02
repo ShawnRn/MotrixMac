@@ -96,8 +96,11 @@ final class DownloadManager {
     private var aria2Service: Aria2Service?
     private var refreshTask: Task<Void, Never>?
     private var speedHistoryCache: [String: [Int64]] = [:]
+    private var speedHistoryNeedsSave = false
+    private var lastSpeedHistorySaveAt: Date = .distantPast
     private var taskDates: [String: Date] = [:] // Cache to store stable addedAt/completedAt dates
     private var taskCompletionDates: [String: Date] = [:] // Cache to store stable completedAt dates
+    private var fileMissingCache: [String: Bool] = [:] // Cache for file existence checks to prevent main thread blocking
     private var lastDockIndicatorUpdateAt: Date = .distantPast
     private var lastDockIndicatorState: (speed: Int64, hasDownloading: Bool, progressPermille: Int)?
 
@@ -329,6 +332,7 @@ final class DownloadManager {
     func disconnectSync() {
         refreshTask?.cancel()
         refreshTask = nil
+        saveSpeedHistoryIfNeeded(force: true)
         updateDockDownloadIndicator(force: true)
     }
 
@@ -445,14 +449,11 @@ final class DownloadManager {
                 }
             }
             
-            if persistentUpdatesMade {
-                self.savePersistentTasks()
-            }
-
                 // [Fix] Use uniquingKeysWith to safely handle any residual duplicates in self.tasks (just in case)
                 // Although self.tasks should be clean now, this is safer.
                 let oldTasksMap = Dictionary(self.tasks.map { ($0.id, $0) }, uniquingKeysWith: { (_, last) in last })
                 
+                var persistentTasksChanged = persistentUpdatesMade
                 self.tasks = newTasks.compactMap { newTask -> DownloadTask? in
                     // Skip tasks that are currently being deleted to prevent ghosting
                     if self.deletingGIDs.contains(newTask.id) {
@@ -511,6 +512,7 @@ final class DownloadManager {
                         
                         task.downloadSpeedHistory = history
                         self.speedHistoryCache[newTask.id] = history
+                        self.speedHistoryNeedsSave = true
                     } 
                     // 2a. Handle completion transition: append 0 to show speed drop
                     else if newTask.status == "complete" {
@@ -533,6 +535,7 @@ final class DownloadManager {
                         if history != task.downloadSpeedHistory {
                             task.downloadSpeedHistory = history
                             self.speedHistoryCache[newTask.id] = history
+                            self.speedHistoryNeedsSave = true
                         }
                     }
                     
@@ -560,10 +563,15 @@ final class DownloadManager {
                     }
 
                     // 3. Persistent Storage logic:
-                    // Persist all tasks to ensure addedAt remains consistent across restarts
-                    if self.persistentTasks[task.id] != task {
+                    // Persist tasks when persistent metadata changes, ignoring transient speeds
+                    if let existing = self.persistentTasks[task.id] {
+                        if !existing.isPersistentMetadataEqual(to: task) {
+                            self.persistentTasks[task.id] = task
+                            persistentTasksChanged = true
+                        }
+                    } else {
                         self.persistentTasks[task.id] = task
-                        self.savePersistentTasks()
+                        persistentTasksChanged = true
                     }
 
                     // 4. Pre-calculate strings for UI (Scheme A)
@@ -612,16 +620,21 @@ final class DownloadManager {
                 }
                 
                 // Done mapping and appending, tasks are fully updated.
+
+                // Encode and write the task snapshot once per refresh, rather than once
+                // for every changed task. Active task speeds can change every 500 ms.
+                if persistentTasksChanged {
+                    self.savePersistentTasks()
+                }
                 
                 self.updateFilteredTasks()
                 self.updateDockDownloadIndicator()
-                self.saveSpeedHistory()
+                self.saveSpeedHistoryIfNeeded()
                 self.lastRpcError = nil
                 
                 // Monitor task list state
                 let downloadingCount = self.taskCount(for: .downloading)
                 let completedCount = self.taskCount(for: .completed)
-                print("DownloadManager: UI State - Downloading: \(downloadingCount), Completed: \(completedCount)")
                 
                 // [Fix] Aggressively clear ghost badge if task list is truly empty
                 if downloadingCount == 0 && completedCount == 0 && tasks.isEmpty {
@@ -1587,6 +1600,18 @@ final class DownloadManager {
         }
     }
 
+    /// Speed samples change on every active refresh. Persist them at a modest cadence
+    /// to avoid repeatedly encoding the full cache and writing UserDefaults.
+    private func saveSpeedHistoryIfNeeded(force: Bool = false) {
+        guard speedHistoryNeedsSave else { return }
+        let now = Date()
+        guard force || now.timeIntervalSince(lastSpeedHistorySaveAt) >= 10 else { return }
+
+        saveSpeedHistory()
+        speedHistoryNeedsSave = false
+        lastSpeedHistorySaveAt = now
+    }
+
     // MARK: - Notifications
 
     private func requestNotificationPermission() {
@@ -2075,22 +2100,21 @@ final class DownloadManager {
             task.formattedStatusLine = "\(task.formattedSizeText) · \(task.formattedStatusText)"
         }
         
-        // 3. File existence check (for sorting and UI)
+        // 3. File existence check (cached to prevent main-thread I/O blocking)
         if task.status == "complete" {
-            // Only check if files array is populated, or rely on dir/name
-            var filePath = ""
-            if let firstFile = task.files.first?.path, !firstFile.isEmpty {
-                filePath = firstFile
+            if let cached = self.fileMissingCache[task.id] {
+                task.isFileMissing = cached
             } else {
-                filePath = task.dir + "/" + task.name
+                var filePath = ""
+                if let firstFile = task.files.first?.path, !firstFile.isEmpty {
+                    filePath = firstFile
+                } else {
+                    filePath = task.dir + "/" + task.name
+                }
+                let isMissing = !FileManager.default.fileExists(atPath: filePath)
+                self.fileMissingCache[task.id] = isMissing
+                task.isFileMissing = isMissing
             }
-            
-            // Should calculate this asynchronously?
-            // Doing it here (called in refreshTasks) is on background actor or MainActor?
-            // DownloadManager is @MainActor.
-            // FileExists is fast on SSD, but might block main thread slightly if many files.
-            // But this is the only way to support "Real-time" sorting without complex state.
-            task.isFileMissing = !FileManager.default.fileExists(atPath: filePath)
         } else {
             task.isFileMissing = false
         }
